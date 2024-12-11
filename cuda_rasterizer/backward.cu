@@ -154,12 +154,26 @@ __global__ void computeCov2DCUDA(int P,
 	const float h_x, float h_y,
 	const float tan_fovx, float tan_fovy,
 	const float* view_matrix,
+        const int selected_gaussian_size,
+        const int* __restrict__ selected_gaussian_indices,
+        const bool* __restrict__ selected_gaussian_bools,
 	const float* dL_dconics,
 	float3* dL_dmeans,
 	float* dL_dcov,
 	float *dL_dtau)
 {
 	auto idx = cg::this_grid().thread_rank();
+
+        if (selected_gaussian_size > 0) {
+            if (idx >= selected_gaussian_size) {
+                return;
+            }
+            idx = selected_gaussian_indices[idx];
+            if (!selected_gaussian_bools[idx]) {
+                return;
+            }
+        }
+
 	if (idx >= P || !(radii[idx] > 0))
 		return;
 
@@ -429,6 +443,9 @@ __global__ void preprocessCUDA(
 	const float* proj,
 	const float *proj_raw,
 	const glm::vec3* campos,
+        const int selected_gaussian_size,
+        const int* __restrict__ selected_gaussian_indices,
+        const bool* __restrict__ selected_gaussian_bools,
 	const float3* dL_dmean2D,
 	glm::vec3* dL_dmeans,
 	float* dL_dcolor,
@@ -440,6 +457,16 @@ __global__ void preprocessCUDA(
 	float *dL_dtau)
 {
 	auto idx = cg::this_grid().thread_rank();
+
+        if (selected_gaussian_size > 0) {
+            if (idx >= selected_gaussian_size) {
+                return;
+            }
+            idx = selected_gaussian_indices[idx];
+            if (!selected_gaussian_bools[idx]) {
+                return;
+            }
+        }
 	if (idx >= P || !(radii[idx] > 0))
 		return;
 
@@ -573,6 +600,9 @@ renderCUDA(
 	const float* __restrict__ depths,
 	const float* __restrict__ final_Ts,
 	const uint32_t* __restrict__ n_contrib,
+        const int selected_gaussian_size,
+        const int* __restrict__ selected_gaussian_indices,
+        const bool* __restrict__ selected_gaussian_bools,
 	const float* __restrict__ dL_dpixels,
 	const float* __restrict__ dL_dpixels_depth,
 	float3* __restrict__ dL_dmean2D,
@@ -802,6 +832,9 @@ void BACKWARD::preprocess(
 	const float focal_x, float focal_y,
 	const float tan_fovx, float tan_fovy,
 	const glm::vec3* campos,
+        const int selected_gaussian_size,
+        const int* selected_gaussian_indices,
+        const bool* selected_gaussian_bools,
 	const float3* dL_dmean2D,
 	const float* dL_dconic,
 	glm::vec3* dL_dmean3D,
@@ -813,50 +846,58 @@ void BACKWARD::preprocess(
 	glm::vec4* dL_drot,
 	float* dL_dtau)
 {
-	// Propagate gradients for the path of 2D conic matrix computation. 
-	// Somewhat long, thus it is its own kernel rather than being part of 
-	// "preprocess". When done, loss gradient w.r.t. 3D means has been
-	// modified and gradient w.r.t. 3D covariance matrix has been computed.	
-	computeCov2DCUDA << <(P + 255) / 256, 256 >> > (
-		P,
-		means3D,
-		radii,
-		cov3Ds,
-		focal_x,
-		focal_y,
-		tan_fovx,
-		tan_fovy,
-		viewmatrix,
-		dL_dconic,
-		(float3*)dL_dmean3D,
-		dL_dcov3D,
-		dL_dtau);
+        int num_threads = selected_gaussian_size > 0 ? selected_gaussian_size : P;
 
-	// Propagate gradients for remaining steps: finish 3D mean gradients,
-	// propagate color gradients to SH (if desireD), propagate 3D covariance
-	// matrix gradients to scale and rotation.
-	preprocessCUDA<NUM_CHANNELS> << < (P + 255) / 256, 256 >> > (
-		P, D, M,
-		(float3*)means3D,
-		radii,
-		shs,
-		clamped,
-		(glm::vec3*)scales,
-		(glm::vec4*)rotations,
-		scale_modifier,
-		viewmatrix,
-		projmatrix,
-		projmatrix_raw,
-		campos,
-		(float3*)dL_dmean2D,
-		(glm::vec3*)dL_dmean3D,
-		dL_dcolor,
-		dL_ddepth,
-		dL_dcov3D,
-		dL_dsh,
-		dL_dscale,
-		dL_drot,
-		dL_dtau);
+        // Propagate gradients for the path of 2D conic matrix computation. 
+        // Somewhat long, thus it is its own kernel rather than being part of 
+        // "preprocess". When done, loss gradient w.r.t. 3D means has been
+        // modified and gradient w.r.t. 3D covariance matrix has been computed.	
+        computeCov2DCUDA << <(num_threads + 255) / 256, 256 >> > (
+            P,
+            means3D,
+            radii,
+            cov3Ds,
+            focal_x,
+            focal_y,
+            tan_fovx,
+            tan_fovy,
+            viewmatrix,
+            selected_gaussian_size,
+            selected_gaussian_indices,
+            selected_gaussian_bools,
+            dL_dconic,
+            (float3*)dL_dmean3D,
+            dL_dcov3D,
+            dL_dtau);
+
+        // Propagate gradients for remaining steps: finish 3D mean gradients,
+        // propagate color gradients to SH (if desireD), propagate 3D covariance
+        // matrix gradients to scale and rotation.
+        preprocessCUDA<NUM_CHANNELS> << < (num_threads + 255) / 256, 256 >> > (
+            P, D, M,
+            (float3*)means3D,
+            radii,
+            shs,
+            clamped,
+            (glm::vec3*)scales,
+            (glm::vec4*)rotations,
+            scale_modifier,
+            viewmatrix,
+            projmatrix,
+            projmatrix_raw,
+            campos,
+            selected_gaussian_size,
+            selected_gaussian_indices,
+            selected_gaussian_bools,
+            (float3*)dL_dmean2D,
+            (glm::vec3*)dL_dmean3D,
+            dL_dcolor,
+            dL_ddepth,
+            dL_dcov3D,
+            dL_dsh,
+            dL_dscale,
+            dL_drot,
+            dL_dtau);
 }
 
 void BACKWARD::render(
@@ -871,6 +912,9 @@ void BACKWARD::render(
 	const float* depths,
 	const float* final_Ts,
 	const uint32_t* n_contrib,
+        const int selected_gaussian_size,
+        const int* selected_gaussian_indices,
+        const bool* selected_gaussian_bools,
 	const float* dL_dpixels,
 	const float* dL_dpixels_depth,
 	float3* dL_dmean2D,
@@ -890,6 +934,9 @@ void BACKWARD::render(
 		depths,
 		final_Ts,
 		n_contrib,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
 		dL_dpixels,
 		dL_dpixels_depth,
 		dL_dmean2D,

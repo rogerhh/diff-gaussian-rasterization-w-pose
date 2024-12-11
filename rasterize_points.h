@@ -62,6 +62,9 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const int R,
 	const torch::Tensor& binningBuffer,
 	const torch::Tensor& imageBuffer,
+        const bool select_gaussians,
+        const torch::Tensor& selected_gaussian_indices,
+        const torch::Tensor& selected_gaussian_bools,
 	const bool debug);
 		
 torch::Tensor markVisible(
