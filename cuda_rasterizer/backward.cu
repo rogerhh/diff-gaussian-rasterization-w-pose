@@ -169,9 +169,6 @@ __global__ void computeCov2DCUDA(int P,
                 return;
             }
             idx = selected_gaussian_indices[idx];
-            if (!selected_gaussian_bools[idx]) {
-                return;
-            }
         }
 
 	if (idx >= P || !(radii[idx] > 0))

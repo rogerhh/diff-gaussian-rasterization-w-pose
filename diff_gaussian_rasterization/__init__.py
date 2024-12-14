@@ -30,7 +30,7 @@ def rasterize_gaussians(
     theta,
     rho,
     raster_settings,
-    num_backward_gaussians=None,
+    num_backward_gaussians=-1,
 ):
     return _RasterizeGaussians.apply(
         means3D,
@@ -104,15 +104,19 @@ class _RasterizeGaussians(torch.autograd.Function):
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings
         ctx.num_rendered = num_rendered
+        if num_backward_gaussians > 0:
+            num_backward_gaussians = min(num_backward_gaussians, radii.shape[0])
         ctx.num_backward_gaussians = num_backward_gaussians
         ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer)
 
 
         # print("num_backward_gaussians: ", num_backward_gaussians)
 
-        if num_backward_gaussians is not None:
+        if num_backward_gaussians > 0:
             # _, ctx.random_indices = torch.topk(radii, num_backward_gaussians, dim=0)
-            ctx.index_dist = radii.float() / torch.sum(radii.float())
+            # Add a small epsilon to avoid zero probabilities
+            ctx.index_dist = (radii.float() / torch.sum(radii.float()) + 1e-8)
+
             ctx.selected_indices = torch.multinomial(ctx.index_dist, num_backward_gaussians, replacement=False)
             ctx.selected_bools = torch.zeros_like(radii, dtype=torch.bool)
             ctx.selected_bools[ctx.selected_indices] = True
@@ -130,7 +134,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         num_rendered = ctx.num_rendered
         raster_settings = ctx.raster_settings
         num_backward_gaussians = ctx.num_backward_gaussians
-        select_gaussians = num_backward_gaussians is not None
+        select_gaussians = num_backward_gaussians > 0
         selected_indices = ctx.selected_indices if select_gaussians else torch.zeros(0, dtype=torch.int32)
         selected_bools = ctx.selected_bools if select_gaussians else torch.zeros(0, dtype=torch.bool)
         colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
@@ -175,19 +179,13 @@ class _RasterizeGaussians(torch.autograd.Function):
         else:
             grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_tau = _C.rasterize_gaussians_backward(*args)
 
-        if num_backward_gaussians is not None:
+        if select_gaussians:
             selected_indices = ctx.selected_indices
             index_dist = ctx.index_dist
-            # print("grad_tau.shape: ", grad_tau.shape)
-            # print("grad_tau: ", grad_tau.view(-1, 6)[selected_indices])
-            # print("grad_tau[selected_indices].shape: ", grad_tau[selected_indices].shape)
-            # print("index_dist[selected_indices].shape: ", index_dist[selected_indices].shape)
+
             grad_tau[selected_indices] /= index_dist[selected_indices].view(-1, 1)
-            grad_tau[selected_indices] /= num_backward_gaussians
-            # print("grad_tau: ", grad_tau.view(-1, 6)[selected_indices])
             grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
-            # grad_tau = torch.sum(grad_tau.view(-1, 6), dim=0)
-            # exit()
+            grad_tau /= num_backward_gaussians
 
 
         else:
