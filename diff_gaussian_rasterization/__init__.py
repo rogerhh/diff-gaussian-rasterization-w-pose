@@ -113,16 +113,14 @@ class _RasterizeGaussians(torch.autograd.Function):
         # print("num_backward_gaussians: ", num_backward_gaussians)
 
         if num_backward_gaussians > 0:
-            # _, ctx.random_indices = torch.topk(radii, num_backward_gaussians, dim=0)
             # Add a small epsilon to avoid zero probabilities
-            ctx.index_dist = (radii.float() / torch.sum(radii.float()) + 1e-8)
+            # ctx.index_dist = (radii.float() / torch.sum(radii.float()) + 1e-8)
+            ctx.index_dist = n_touched.float() / (n_touched.float() + 1e-8)
+            ctx.index_dist = (ctx.index_dist / ctx.index_dist.sum() + 1e-8) * num_backward_gaussians
 
             ctx.selected_indices = torch.multinomial(ctx.index_dist, num_backward_gaussians, replacement=False)
             ctx.selected_bools = torch.zeros_like(radii, dtype=torch.bool)
             ctx.selected_bools[ctx.selected_indices] = True
-
-            # print("Selected indices: ", ctx.selected_indices)
-            # print("Selected bools: ", ctx.selected_bools[ctx.selected_indices])
 
 
         return color, radii, depth, opacity, n_touched
@@ -135,6 +133,9 @@ class _RasterizeGaussians(torch.autograd.Function):
         raster_settings = ctx.raster_settings
         num_backward_gaussians = ctx.num_backward_gaussians
         select_gaussians = num_backward_gaussians > 0
+        # DEBUG
+        select_gaussians = False
+        # DEBUG END
         selected_indices = ctx.selected_indices if select_gaussians else torch.zeros(0, dtype=torch.int32)
         selected_bools = ctx.selected_bools if select_gaussians else torch.zeros(0, dtype=torch.bool)
         colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
@@ -183,13 +184,35 @@ class _RasterizeGaussians(torch.autograd.Function):
             selected_indices = ctx.selected_indices
             index_dist = ctx.index_dist
 
+            # DEBUG
+            grad_tau_gt = torch.sum(grad_tau.view(-1, 6), dim=0)
+            # DEBUG END
+
             grad_tau[selected_indices] /= index_dist[selected_indices].view(-1, 1)
             grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
             grad_tau /= num_backward_gaussians
 
+            # norms = grad_tau.norm(dim=1)
+            # norms = norms / norms.sum()
+            # print("norms.shape: ", norms.shape)
+            # selected_indices = torch.multinomial(norms, num_backward_gaussians, replacement=False)
+            # grad_tau[selected_indices] /= norms[selected_indices].view(-1, 1)
+            # grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
+            # grad_tau /= num_backward_gaussians
+
+
+            # DEBUG
+            diff = grad_tau_gt - grad_tau
+            eps = diff.norm() / grad_tau_gt.norm()
+            print("grad_tau_gt: ", grad_tau_gt)
+            print("grad_tau: ", grad_tau)
+            print("eps: ", eps.item())
+
+            # DEBUG END
 
         else:
             grad_tau = torch.sum(grad_tau.view(-1, 6), dim=0)
+
         grad_rho = grad_tau[:3].view(1, -1)
         grad_theta = grad_tau[3:].view(1, -1)
 
