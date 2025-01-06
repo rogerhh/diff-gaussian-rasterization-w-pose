@@ -32,6 +32,8 @@ namespace BACKWARD
 		const float* depths,
 		const float* final_Ts,
 		const uint32_t* n_contrib,
+                const int selected_pixel_size,
+                const int* selected_pixel_indices,
                 const int selected_gaussian_size,
                 const int* selected_gaussian_indices,
                 const bool* selected_gaussian_bools,

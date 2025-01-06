@@ -145,6 +145,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const int R,
 	const torch::Tensor& binningBuffer,
 	const torch::Tensor& imageBuffer,
+        const bool select_pixels,
+        const torch::Tensor& selected_pixel_indices,
         const bool select_gaussians,
         const torch::Tensor& selected_gaussian_indices,
         const torch::Tensor& selected_gaussian_bools,
@@ -153,6 +155,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
   const int P = means3D.size(0);
   const int H = dL_dout_color.size(1);
   const int W = dL_dout_color.size(2);
+  const int num_backward_pixels = select_pixels? selected_pixel_indices.size(0): -1;
   const int num_backward_gaussians = select_gaussians? selected_gaussian_indices.size(0): -1;
   
   int M = 0;
@@ -195,6 +198,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	  reinterpret_cast<char*>(geomBuffer.contiguous().data_ptr()),
 	  reinterpret_cast<char*>(binningBuffer.contiguous().data_ptr()),
 	  reinterpret_cast<char*>(imageBuffer.contiguous().data_ptr()),
+          num_backward_pixels,
+          select_pixels? selected_pixel_indices.contiguous().data<int>(): nullptr,
           num_backward_gaussians,
           select_gaussians? selected_gaussian_indices.contiguous().data<int>(): nullptr,
           select_gaussians? selected_gaussian_bools.contiguous().data<bool>(): nullptr,

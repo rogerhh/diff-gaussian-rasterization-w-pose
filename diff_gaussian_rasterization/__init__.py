@@ -109,7 +109,6 @@ class _RasterizeGaussians(torch.autograd.Function):
         ctx.num_backward_gaussians = num_backward_gaussians
         ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer)
 
-
         # print("num_backward_gaussians: ", num_backward_gaussians)
 
         if num_backward_gaussians > 0:
@@ -122,6 +121,10 @@ class _RasterizeGaussians(torch.autograd.Function):
             ctx.selected_bools = torch.zeros_like(radii, dtype=torch.bool)
             ctx.selected_bools[ctx.selected_indices] = True
 
+        # DEBUG
+        ctx.select_pixels = False
+        ctx.selected_pixel_indices = None
+        # DEBUG END
 
         return color, radii, depth, opacity, n_touched
 
@@ -131,6 +134,8 @@ class _RasterizeGaussians(torch.autograd.Function):
         # Restore necessary values from context
         num_rendered = ctx.num_rendered
         raster_settings = ctx.raster_settings
+        select_pixels = ctx.select_pixels
+        selected_pixel_indices = ctx.selected_pixel_indices if select_pixels else torch.zeros(0, dtype=torch.int32)
         num_backward_gaussians = ctx.num_backward_gaussians
         select_gaussians = num_backward_gaussians > 0
         # DEBUG
@@ -163,6 +168,8 @@ class _RasterizeGaussians(torch.autograd.Function):
                 num_rendered,
                 binningBuffer,
                 imgBuffer,
+                select_pixels,
+                selected_pixel_indices.to(torch.int32),
                 select_gaussians,
                 selected_indices.to(torch.int32),
                 selected_bools,
@@ -179,6 +186,54 @@ class _RasterizeGaussians(torch.autograd.Function):
                 raise ex
         else:
             grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_tau = _C.rasterize_gaussians_backward(*args)
+
+            if select_pixels:
+                print("we should not be here")
+
+            # if select_pixels:
+            #     print("selected_pixel_indices: ", selected_pixel_indices)
+            #     print("colors_precomp.shape: ", colors_precomp.shape)
+            #     print("grad_out_color.shape: ", grad_out_color.shape)
+            #     print("grad_out_color: ", grad_out_color)
+            #     sample_grad_means3D = grad_means3D.clone()
+            #     sample_grad_tau = grad_tau.clone()
+            #     print("select pixels grad_means3D: ", grad_means3D)
+
+            #     args = (raster_settings.bg,
+            #             means3D,
+            #             radii,
+            #             colors_precomp,
+            #             scales,
+            #             rotations,
+            #             raster_settings.scale_modifier,
+            #             cov3Ds_precomp,
+            #             raster_settings.viewmatrix,
+            #             raster_settings.projmatrix,
+            #             raster_settings.projmatrix_raw,
+            #             raster_settings.tanfovx,
+            #             raster_settings.tanfovy,
+            #             grad_out_color,
+            #             grad_out_depth,
+            #             sh,
+            #             raster_settings.sh_degree,
+            #             raster_settings.campos,
+            #             geomBuffer,
+            #             num_rendered,
+            #             binningBuffer,
+            #             imgBuffer,
+            #             False,
+            #             selected_pixel_indices.to(torch.int32),
+            #             select_gaussians,
+            #             selected_indices.to(torch.int32),
+            #             selected_bools,
+            #             raster_settings.debug)
+
+            #     grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_tau = _C.rasterize_gaussians_backward(*args)
+
+            #     print("correct grad_means3D: ", grad_tau)
+            #     print(f"diff max: {(grad_tau - sample_grad_tau).abs().max()}")
+
+            #     import code; code.interact(local=locals())
 
         if select_gaussians:
             selected_indices = ctx.selected_indices
