@@ -13,6 +13,7 @@ from typing import NamedTuple
 import torch.nn as nn
 import torch
 from . import _C
+import time
 
 def cpu_deep_copy_tuple(input_tuple):
     copied_tensors = [item.cpu().clone() if isinstance(item, torch.Tensor) else item for item in input_tuple]
@@ -121,15 +122,17 @@ class _RasterizeGaussians(torch.autograd.Function):
             ctx.selected_bools = torch.zeros_like(radii, dtype=torch.bool)
             ctx.selected_bools[ctx.selected_indices] = True
 
-        # DEBUG
+        # Initialize some context variables that may be modified from outside
+        ctx.tracking = False
         ctx.select_pixels = False
         ctx.selected_pixel_indices = None
-        # DEBUG END
 
         return color, radii, depth, opacity, n_touched
 
     @staticmethod
     def backward(ctx, grad_out_color, grad_out_radii, grad_out_depth, grad_out_opacity, grad_n_touched):
+
+        backward_start = time.time()
 
         # Restore necessary values from context
         num_rendered = ctx.num_rendered
@@ -138,9 +141,6 @@ class _RasterizeGaussians(torch.autograd.Function):
         selected_pixel_indices = ctx.selected_pixel_indices if select_pixels else torch.zeros(0, dtype=torch.int32)
         num_backward_gaussians = ctx.num_backward_gaussians
         select_gaussians = num_backward_gaussians > 0
-        # DEBUG
-        select_gaussians = False
-        # DEBUG END
         selected_indices = ctx.selected_indices if select_gaussians else torch.zeros(0, dtype=torch.int32)
         selected_bools = ctx.selected_bools if select_gaussians else torch.zeros(0, dtype=torch.bool)
         colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
@@ -186,9 +186,6 @@ class _RasterizeGaussians(torch.autograd.Function):
                 raise ex
         else:
             grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_tau = _C.rasterize_gaussians_backward(*args)
-
-            if select_pixels:
-                print("we should not be here")
 
             # if select_pixels:
             #     print("selected_pixel_indices: ", selected_pixel_indices)
@@ -243,17 +240,17 @@ class _RasterizeGaussians(torch.autograd.Function):
             grad_tau_gt = torch.sum(grad_tau.view(-1, 6), dim=0)
             # DEBUG END
 
-            grad_tau[selected_indices] /= index_dist[selected_indices].view(-1, 1)
-            grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
-            grad_tau /= num_backward_gaussians
-
-            # norms = grad_tau.norm(dim=1)
-            # norms = norms / norms.sum()
-            # print("norms.shape: ", norms.shape)
-            # selected_indices = torch.multinomial(norms, num_backward_gaussians, replacement=False)
-            # grad_tau[selected_indices] /= norms[selected_indices].view(-1, 1)
+            # grad_tau[selected_indices] /= index_dist[selected_indices].view(-1, 1)
             # grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
             # grad_tau /= num_backward_gaussians
+
+            norms = grad_tau.norm(dim=1) + 1e-8
+            norms = norms / norms.sum()
+            print("norms.shape: ", norms.shape)
+            selected_indices = torch.multinomial(norms, num_backward_gaussians, replacement=True)
+            grad_tau[selected_indices] /= norms[selected_indices].view(-1, 1)
+            grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
+            grad_tau /= num_backward_gaussians
 
 
             # DEBUG
@@ -285,6 +282,21 @@ class _RasterizeGaussians(torch.autograd.Function):
             None,
             None,
         )
+
+        backward_end = time.time()
+        backward_time_ms = (backward_end - backward_start) * 1000
+
+        # # DEBUG
+        # if select_pixels:
+        #     print(f"grad_tau.nonzero().shape: {grad_tau.nonzero().shape}")
+
+
+        # if ctx.tracking:
+        #     print(f"backward time ms: {(backward_end - backward_start) * 1000}")
+
+        # # DEBUG END
+
+        ctx.stats = {"backward_time_ms": backward_time_ms}
 
         return grads
 

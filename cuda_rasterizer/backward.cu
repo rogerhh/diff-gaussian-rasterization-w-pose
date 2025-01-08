@@ -586,7 +586,7 @@ __device__ void render_cuda_reduce_sum(group_t g, Lists... lists) {
   }
 }
 
-#define PIXEL_SAMPLE_BLOCK_SIZE 32
+#define PIXEL_SAMPLE_BLOCK_SIZE 128
 
 // Backward version of the rendering procedure.
 template <uint32_t C>
@@ -698,6 +698,8 @@ renderPixelSampleCUDA(
         for (int j = 0; j < min(PIXEL_SAMPLE_BLOCK_SIZE, toDo); j++) {
             block.sync();
 
+            if (tid == 0) {
+
             // Compute blending values, as before.
             const float2 xy = collected_xy[j];
             const float2 d = { xy.x - pixf.x, xy.y - pixf.y };
@@ -773,7 +775,6 @@ renderPixelSampleCUDA(
             dL_dconic2D_shared[tid].w = -0.5f * gdy * d.y * dL_dG;
             dL_dopacity_shared[tid] = G * dL_dalpha;
 
-            if (tid == 0) {
                 float2 dL_dmean2D_acc = dL_dmean2D_shared[0];
                 float4 dL_dconic2D_acc = dL_dconic2D_shared[0];
                 float dL_dopacity_acc = dL_dopacity_shared[0];
@@ -1134,6 +1135,7 @@ void BACKWARD::render(
 	float* dL_dcolors,
 	float* dL_ddepths)
 {
+
     if(selected_pixel_size > 0) {
         // std::cout << "Selected pixel size: " << selected_pixel_size << std::endl;
         // std::cout << "W: " << W << ", H: " << H << std::endl;
@@ -1164,7 +1166,6 @@ void BACKWARD::render(
         // const int last_contributor = n_contrib_cpu[pix_id];
 
         // std::cout << "last_contributor: " << last_contributor << std::endl;
-
 
         int num_threads = selected_pixel_size;
 
