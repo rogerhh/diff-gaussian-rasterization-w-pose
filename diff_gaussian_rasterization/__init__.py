@@ -110,7 +110,8 @@ class _RasterizeGaussians(torch.autograd.Function):
         ctx.num_backward_gaussians = num_backward_gaussians
         ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer)
 
-        # print("num_backward_gaussians: ", num_backward_gaussians)
+        """
+        # THIS SECTION CURRENTLY DISABLED
 
         if num_backward_gaussians > 0:
             # Add a small epsilon to avoid zero probabilities
@@ -121,6 +122,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             ctx.selected_indices = torch.multinomial(ctx.index_dist, num_backward_gaussians, replacement=False)
             ctx.selected_bools = torch.zeros_like(radii, dtype=torch.bool)
             ctx.selected_bools[ctx.selected_indices] = True
+        """
 
         # Initialize some context variables that may be modified from outside
         ctx.tracking = False
@@ -132,7 +134,7 @@ class _RasterizeGaussians(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_out_color, grad_out_radii, grad_out_depth, grad_out_opacity, grad_n_touched):
 
-        backward_start = time.time()
+        rasterize_gaussians_backward_start = time.time()
 
         # Restore necessary values from context
         num_rendered = ctx.num_rendered
@@ -140,9 +142,12 @@ class _RasterizeGaussians(torch.autograd.Function):
         select_pixels = ctx.select_pixels
         selected_pixel_indices = ctx.selected_pixel_indices if select_pixels else torch.zeros(0, dtype=torch.int32)
         num_backward_gaussians = ctx.num_backward_gaussians
+        """
+        # DISABLED
         select_gaussians = num_backward_gaussians > 0
         selected_indices = ctx.selected_indices if select_gaussians else torch.zeros(0, dtype=torch.int32)
         selected_bools = ctx.selected_bools if select_gaussians else torch.zeros(0, dtype=torch.bool)
+        """
         colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
 
         # Restructure args as C++ method expects them
@@ -185,82 +190,18 @@ class _RasterizeGaussians(torch.autograd.Function):
                 print("\nAn error occured in backward. Writing snapshot_bw.dump for debugging.\n")
                 raise ex
         else:
+            rasterize_gaussians_C_backward_start = time.time()
             grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_tau = _C.rasterize_gaussians_backward(*args)
-
-            # if select_pixels:
-            #     print("selected_pixel_indices: ", selected_pixel_indices)
-            #     print("colors_precomp.shape: ", colors_precomp.shape)
-            #     print("grad_out_color.shape: ", grad_out_color.shape)
-            #     print("grad_out_color: ", grad_out_color)
-            #     sample_grad_means3D = grad_means3D.clone()
-            #     sample_grad_tau = grad_tau.clone()
-            #     print("select pixels grad_means3D: ", grad_means3D)
-
-            #     args = (raster_settings.bg,
-            #             means3D,
-            #             radii,
-            #             colors_precomp,
-            #             scales,
-            #             rotations,
-            #             raster_settings.scale_modifier,
-            #             cov3Ds_precomp,
-            #             raster_settings.viewmatrix,
-            #             raster_settings.projmatrix,
-            #             raster_settings.projmatrix_raw,
-            #             raster_settings.tanfovx,
-            #             raster_settings.tanfovy,
-            #             grad_out_color,
-            #             grad_out_depth,
-            #             sh,
-            #             raster_settings.sh_degree,
-            #             raster_settings.campos,
-            #             geomBuffer,
-            #             num_rendered,
-            #             binningBuffer,
-            #             imgBuffer,
-            #             False,
-            #             selected_pixel_indices.to(torch.int32),
-            #             select_gaussians,
-            #             selected_indices.to(torch.int32),
-            #             selected_bools,
-            #             raster_settings.debug)
-
-            #     grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_tau = _C.rasterize_gaussians_backward(*args)
-
-            #     print("correct grad_means3D: ", grad_tau)
-            #     print(f"diff max: {(grad_tau - sample_grad_tau).abs().max()}")
-
-            #     import code; code.interact(local=locals())
+            rasterize_gaussians_C_backward_end = time.time()
 
         if select_gaussians:
-            selected_indices = ctx.selected_indices
-            index_dist = ctx.index_dist
-
-            # DEBUG
-            grad_tau_gt = torch.sum(grad_tau.view(-1, 6), dim=0)
-            # DEBUG END
-
-            # grad_tau[selected_indices] /= index_dist[selected_indices].view(-1, 1)
-            # grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
-            # grad_tau /= num_backward_gaussians
 
             norms = grad_tau.norm(dim=1) + 1e-8
             norms = norms / norms.sum()
-            print("norms.shape: ", norms.shape)
             selected_indices = torch.multinomial(norms, num_backward_gaussians, replacement=True)
             grad_tau[selected_indices] /= norms[selected_indices].view(-1, 1)
             grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
             grad_tau /= num_backward_gaussians
-
-
-            # DEBUG
-            diff = grad_tau_gt - grad_tau
-            eps = diff.norm() / grad_tau_gt.norm()
-            print("grad_tau_gt: ", grad_tau_gt)
-            print("grad_tau: ", grad_tau)
-            print("eps: ", eps.item())
-
-            # DEBUG END
 
         else:
             grad_tau = torch.sum(grad_tau.view(-1, 6), dim=0)
@@ -283,8 +224,9 @@ class _RasterizeGaussians(torch.autograd.Function):
             None,
         )
 
-        backward_end = time.time()
-        backward_time_ms = (backward_end - backward_start) * 1000
+        rasterize_gaussians_backward_end = time.time()
+        rasterize_gaussians_backward_time_ms = (rasterize_gaussians_backward_end - rasterize_gaussians_backward_start) * 1000
+        rasterize_gaussians_C_backward_time_ms = (rasterize_gaussians_C_backward_end - rasterize_gaussians_C_backward_start) * 1000
 
         # # DEBUG
         # if select_pixels:
@@ -296,7 +238,8 @@ class _RasterizeGaussians(torch.autograd.Function):
 
         # # DEBUG END
 
-        ctx.stats = {"backward_time_ms": backward_time_ms}
+        ctx.stats = {"rasterize_gaussians_backward_time_ms": rasterize_gaussians_backward_time_ms, 
+                     "rasterize_gaussians_C_backward_time_ms": rasterize_gaussians_C_backward_time_ms}
 
         return grads
 
