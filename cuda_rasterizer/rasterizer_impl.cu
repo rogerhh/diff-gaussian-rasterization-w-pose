@@ -468,3 +468,138 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dtau), debug)
 
 }
+
+void CudaRasterizer::Rasterizer::backwardSketchJacobian(
+        const int sketch_mode,
+        const int sketch_dim,
+        const int* sketch_indices,
+	const int P, int D, int M, int R,
+	const float* background,
+	const int width, int height,
+	const float* means3D,
+	const float* shs,
+	const float* colors_precomp,
+	const float* scales,
+	const float scale_modifier,
+	const float* rotations,
+	const float* cov3D_precomp,
+	const float* viewmatrix,
+	const float* projmatrix,
+        const float* projmatrix_raw,
+        const float* campos,
+	const float tan_fovx, float tan_fovy,
+	const int* radii,
+	char* geom_buffer,
+	char* binning_buffer,
+	char* img_buffer,
+        const int selected_pixel_size,
+        int* selected_pixel_indices,
+        const int selected_gaussian_size,
+        int* selected_gaussian_indices,
+        bool* selected_gaussian_bools,
+	const float* df_dpix,
+	const float* df_dpix_depth,
+	float* df_dmean2D,
+	float* df_dconic,
+	float* df_dopacity,
+	float* df_dcolor,
+	float* df_ddepth,
+	float* df_dmean3D,
+	float* df_dcov3D,
+	float* df_dsh,
+	float* df_dscale,
+	float* df_drot,
+	float* df_dtau,
+	bool debug)
+{
+
+	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
+	BinningState binningState = BinningState::fromChunk(binning_buffer, R);
+	ImageState imgState = ImageState::fromChunk(img_buffer, width * height);
+
+	if (radii == nullptr)
+	{
+		radii = geomState.internal_radii;
+	}
+
+	const float focal_y = height / (2.0f * tan_fovy);
+	const float focal_x = width / (2.0f * tan_fovx);
+
+	const dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
+	const dim3 block(BLOCK_X, BLOCK_Y, 1);
+
+	// Compute loss gradients w.r.t. 2D mean position, conic matrix,
+	// opacity and RGB of Gaussians from per-pixel loss gradients.
+	// If we were given precomputed colors and not SHs, use them.
+	const float* color_ptr = (colors_precomp != nullptr) ? colors_precomp : geomState.rgb;
+    const float* depth_ptr = geomState.depths;
+
+	CHECK_CUDA(BACKWARD::renderSketchJacobian(
+                sketch_mode,
+                sketch_dim,
+                sketch_indices,
+		tile_grid,
+		block,
+		imgState.ranges,
+		binningState.point_list,
+		width, height,
+                P,
+		background,
+		geomState.means2D,
+		geomState.conic_opacity,
+		color_ptr,
+		depth_ptr,
+		imgState.accum_alpha,
+		imgState.n_contrib,
+                selected_pixel_size,
+                selected_pixel_indices,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
+		df_dpix,
+		df_dpix_depth,
+		(float3*)df_dmean2D,
+		(float4*)df_dconic,
+		df_dopacity,
+		df_dcolor,
+		df_ddepth
+    ), debug)
+
+	// Take care of the rest of preprocessing. Was the precomputed covariance
+	// given to us or a scales/rot pair? If precomputed, pass that. If not,
+	// use the one we computed ourselves.
+	const float* cov3D_ptr = (cov3D_precomp != nullptr) ? cov3D_precomp : geomState.cov3D;
+	CHECK_CUDA(BACKWARD::preprocessSketchJacobian(
+                sketch_mode,
+                sketch_dim,
+                P, D, M,
+		(float3*)means3D,
+		radii,
+		shs,
+		geomState.clamped,
+		(glm::vec3*)scales,
+		(glm::vec4*)rotations,
+		scale_modifier,
+		cov3D_ptr,
+		viewmatrix,
+		projmatrix,
+                projmatrix_raw,
+		focal_x, focal_y,
+		tan_fovx, tan_fovy,
+		(glm::vec3*)campos,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
+		(float3*)df_dmean2D,
+		df_dconic,
+		(glm::vec3*)df_dmean3D,
+		df_dcolor,
+		df_ddepth,
+		df_dcov3D,
+		df_dsh,
+		(glm::vec3*)df_dscale,
+		(glm::vec4*)df_drot,
+		df_dtau,
+                df_dopacity), debug)
+
+}

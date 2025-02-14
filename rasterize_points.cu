@@ -121,6 +121,27 @@ RasterizeGaussiansCUDA(
   return std::make_tuple(rendered, out_color, radii, geomBuffer, binningBuffer, imgBuffer, out_depth, out_opaticy, n_touched);
 }
 
+torch::Tensor markVisible(
+		torch::Tensor& means3D,
+		torch::Tensor& viewmatrix,
+		torch::Tensor& projmatrix)
+{ 
+  const int P = means3D.size(0);
+  
+  torch::Tensor present = torch::full({P}, false, means3D.options().dtype(at::kBool));
+ 
+  if(P != 0)
+  {
+	CudaRasterizer::Rasterizer::markVisible(P,
+		means3D.contiguous().data<float>(),
+		viewmatrix.contiguous().data<float>(),
+		projmatrix.contiguous().data<float>(),
+		present.contiguous().data<bool>());
+  }
+  
+  return present;
+}
+
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
  RasterizeGaussiansBackwardCUDA(
  	const torch::Tensor& background,
@@ -222,23 +243,110 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
   return std::make_tuple(dL_dmeans2D, dL_dcolors, dL_dopacity, dL_dmeans3D, dL_dcov3D, dL_dsh, dL_dscales, dL_drotations, dL_dtau);
 }
 
-torch::Tensor markVisible(
-		torch::Tensor& means3D,
-		torch::Tensor& viewmatrix,
-		torch::Tensor& projmatrix)
-{ 
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+ RasterizeGaussiansBackwardSketchJacobianCUDA(
+ 	const torch::Tensor& background,
+	const torch::Tensor& means3D,
+	const torch::Tensor& radii,
+        const torch::Tensor& colors,
+        const torch::Tensor& scales,
+        const torch::Tensor& rotations,
+        const float scale_modifier,
+        const torch::Tensor& cov3D_precomp,
+        const torch::Tensor& viewmatrix,
+        const torch::Tensor& projmatrix,
+        const torch::Tensor& projmatrix_raw,
+        const float tan_fovx,
+        const float tan_fovy,
+        const torch::Tensor& df_dout_color,
+        const torch::Tensor& df_dout_depths,
+	const torch::Tensor& sh,
+	const int degree,
+	const torch::Tensor& campos,
+	const torch::Tensor& geomBuffer,
+	const int R,
+	const torch::Tensor& binningBuffer,
+	const torch::Tensor& imageBuffer,
+        const bool select_pixels,
+        const torch::Tensor& selected_pixel_indices,
+        const bool select_gaussians,
+        const torch::Tensor& selected_gaussian_indices,
+        const torch::Tensor& selected_gaussian_bools,
+        const int sketch_mode,
+        const int sketch_dim,
+        const torch::Tensor& sketch_indices,
+	const bool debug) 
+{
   const int P = means3D.size(0);
+  const int H = df_dout_color.size(1);
+  const int W = df_dout_color.size(2);
+  const int d = sketch_mode == 0? 1 : sketch_dim;
+  const int num_backward_pixels = select_pixels? selected_pixel_indices.size(0): -1;
+  const int num_backward_gaussians = select_gaussians? selected_gaussian_indices.size(0): -1;
   
-  torch::Tensor present = torch::full({P}, false, means3D.options().dtype(at::kBool));
- 
-  if(P != 0)
-  {
-	CudaRasterizer::Rasterizer::markVisible(P,
-		means3D.contiguous().data<float>(),
-		viewmatrix.contiguous().data<float>(),
-		projmatrix.contiguous().data<float>(),
-		present.contiguous().data<bool>());
+  int M = 0;
+  if(sh.size(0) != 0)
+  {	
+	M = sh.size(1);
   }
-  
-  return present;
+
+  torch::Tensor df_dmeans3D = torch::zeros({d, P, 3}, means3D.options());
+  torch::Tensor df_dmeans2D = torch::zeros({d, P, 3}, means3D.options());
+  torch::Tensor df_dcolors = torch::zeros({d, P, NUM_CHANNELS}, means3D.options());
+  torch::Tensor df_ddepths = torch::zeros({d, P, 1}, means3D.options());
+  torch::Tensor df_dconic = torch::zeros({d, P, 2, 2}, means3D.options());
+  torch::Tensor df_dopacity = torch::zeros({d, P, 1}, means3D.options());
+  torch::Tensor df_dcov3D = torch::zeros({d, P, 6}, means3D.options());
+  torch::Tensor df_dsh = torch::zeros({d, P, M, 3}, means3D.options());
+  torch::Tensor df_dscales = torch::zeros({d, P, 3}, means3D.options());
+  torch::Tensor df_drotations = torch::zeros({d, P, 4}, means3D.options());
+  torch::Tensor df_dtau = torch::zeros({d, P, 6}, means3D.options());
+
+  if(P != 0)
+  {  
+	  CudaRasterizer::Rasterizer::backwardSketchJacobian(
+          sketch_mode, d,
+          sketch_indices.contiguous().data<int>(),
+          P, degree, M, R,
+	  background.contiguous().data<float>(),
+	  W, H, 
+	  means3D.contiguous().data<float>(),
+	  sh.contiguous().data<float>(),
+	  colors.contiguous().data<float>(),
+	  scales.data_ptr<float>(),
+	  scale_modifier,
+	  rotations.data_ptr<float>(),
+	  cov3D_precomp.contiguous().data<float>(),
+	  viewmatrix.contiguous().data<float>(),
+	  projmatrix.contiguous().data<float>(),
+          projmatrix_raw.contiguous().data<float>(),
+	  campos.contiguous().data<float>(),
+	  tan_fovx,
+	  tan_fovy,
+	  radii.contiguous().data<int>(),
+	  reinterpret_cast<char*>(geomBuffer.contiguous().data_ptr()),
+	  reinterpret_cast<char*>(binningBuffer.contiguous().data_ptr()),
+	  reinterpret_cast<char*>(imageBuffer.contiguous().data_ptr()),
+          num_backward_pixels,
+          select_pixels? selected_pixel_indices.contiguous().data<int>(): nullptr,
+          num_backward_gaussians,
+          select_gaussians? selected_gaussian_indices.contiguous().data<int>(): nullptr,
+          select_gaussians? selected_gaussian_bools.contiguous().data<bool>(): nullptr,
+	  df_dout_color.contiguous().data<float>(),
+	  df_dout_depths.contiguous().data<float>(),
+	  df_dmeans2D.contiguous().data<float>(),
+	  df_dconic.contiguous().data<float>(),  
+	  df_dopacity.contiguous().data<float>(),
+	  df_dcolors.contiguous().data<float>(),
+	  df_ddepths.contiguous().data<float>(),
+	  df_dmeans3D.contiguous().data<float>(),
+	  df_dcov3D.contiguous().data<float>(),
+	  df_dsh.contiguous().data<float>(),
+	  df_dscales.contiguous().data<float>(),
+	  df_drotations.contiguous().data<float>(),
+          df_dtau.contiguous().data<float>(),
+	  debug);
+  }
+
+  return std::make_tuple(df_dmeans2D, df_dcolors, df_dopacity, df_dmeans3D, df_dcov3D, df_dsh, df_dscales, df_drotations, df_dtau);
 }
