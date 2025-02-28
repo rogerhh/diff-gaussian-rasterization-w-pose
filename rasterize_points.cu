@@ -58,6 +58,9 @@ RasterizeGaussiansCUDA(
   if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
     AT_ERROR("means3D must have dimensions (num_points, 3)");
   }
+
+  int device_id;
+  cudaGetDevice(&device_id);
   
   const int P = means3D.size(0);
   const int H = image_height;
@@ -72,7 +75,7 @@ RasterizeGaussiansCUDA(
   torch::Tensor out_depth = torch::full({1, H, W}, 0.0, float_opts);
   torch::Tensor out_opaticy = torch::full({1, H, W}, 0.0, float_opts);
 
-  torch::Device device(torch::kCUDA);
+  torch::Device device(torch::kCUDA, device_id);
   torch::TensorOptions options(torch::kByte);
   torch::Tensor geomBuffer = torch::empty({0}, options.device(device));
   torch::Tensor binningBuffer = torch::empty({0}, options.device(device));
