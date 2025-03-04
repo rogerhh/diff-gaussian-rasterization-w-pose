@@ -1137,36 +1137,6 @@ void BACKWARD::render(
 {
 
     if(selected_pixel_size > 0) {
-        // std::cout << "Selected pixel size: " << selected_pixel_size << std::endl;
-        // std::cout << "W: " << W << ", H: " << H << std::endl;
-        // // first copy all the pointers to cpu for printing
-        // const uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
-        // const uint32_t vertical_blocks = (H + BLOCK_Y - 1) / BLOCK_Y;
-        // uint32_t* selected_pixel_indices_cpu = new uint32_t[selected_pixel_size];
-        // cudaMemcpy(selected_pixel_indices_cpu, selected_pixel_indices, selected_pixel_size * sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        // const uint32_t pix_id = selected_pixel_indices_cpu[0];
-
-        // std::cout << "pix_id: " << pix_id << std::endl;
-
-        // const uint2 pix = {pix_id % W, pix_id / W};
-
-        // std::cout << "pix: " << pix.x << ", " << pix.y << std::endl;
-
-        // const float2 pixf = { (float)pix.x, (float)pix.y };
-        // const uint2 block_group_index = {pix.x / BLOCK_X, pix.y / BLOCK_Y};
-        // std::cout << "block_group_index: " << block_group_index.x << ", " << block_group_index.y << std::endl;
-
-        // uint2* ranges_cpu = new uint2[horizontal_blocks * vertical_blocks];
-        // cudaMemcpy(ranges_cpu, ranges, horizontal_blocks * vertical_blocks * sizeof(uint2), cudaMemcpyDeviceToHost);
-        // const uint2 range = ranges_cpu[block_group_index.y * horizontal_blocks + block_group_index.x];
-        // std::cout << "range: " << range.x << ", " << range.y << std::endl;
-
-        // uint32_t* n_contrib_cpu = new uint32_t[W * H];
-        // cudaMemcpy(n_contrib_cpu, n_contrib, W * H * sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        // const int last_contributor = n_contrib_cpu[pix_id];
-
-        // std::cout << "last_contributor: " << last_contributor << std::endl;
-
         int num_threads = selected_pixel_size;
 
         renderPixelSampleCUDA<NUM_CHANNELS> << <num_threads, PIXEL_SAMPLE_BLOCK_SIZE >> > (

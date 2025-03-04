@@ -508,82 +508,82 @@ __global__ void preprocessSketchJacobianCUDA(
 	df_dmean.y = (proj[4] * m_w - proj[7] * mul1) * df_dmean2D[global_idx].x + (proj[5] * m_w - proj[7] * mul2) * df_dmean2D[global_idx].y;
 	df_dmean.z = (proj[8] * m_w - proj[11] * mul1) * df_dmean2D[global_idx].x + (proj[9] * m_w - proj[11] * mul2) * df_dmean2D[global_idx].y;
 
-	// // That's the second part of the mean gradient. Previous computation
-	// // of cov2D and following SH conversion also affects it.
-	// df_dmeans[global_idx] += df_dmean;
+	// That's the second part of the mean gradient. Previous computation
+	// of cov2D and following SH conversion also affects it.
+	df_dmeans[global_idx] += df_dmean;
 
-	// float alpha = 1.0f * m_w;
-	// float beta = -m_hom.x * m_w * m_w;
-	// float gamma = -m_hom.y * m_w * m_w;
+	float alpha = 1.0f * m_w;
+	float beta = -m_hom.x * m_w * m_w;
+	float gamma = -m_hom.y * m_w * m_w;
 
-	// float a = proj_raw[0];
-	// float b = proj_raw[5];
-	// float c = proj_raw[10];
-	// float d = proj_raw[14];
-	// float e = proj_raw[11];
+	float a = proj_raw[0];
+	float b = proj_raw[5];
+	float c = proj_raw[10];
+	float d = proj_raw[14];
+	float e = proj_raw[11];
 
-	// SE3 T_CW(viewmatrix);
-	// mat33 R = T_CW.R().data();
-	// mat33 RT = R.transpose();
-	// float3 t = T_CW.t();
-	// float3 p_C = T_CW * m;
-	// mat33 dp_C_d_rho = mat33::identity();
-	// mat33 dp_C_d_theta = -mat33::skew_symmetric(p_C);
+	SE3 T_CW(viewmatrix);
+	mat33 R = T_CW.R().data();
+	mat33 RT = R.transpose();
+	float3 t = T_CW.t();
+	float3 p_C = T_CW * m;
+	mat33 dp_C_d_rho = mat33::identity();
+	mat33 dp_C_d_theta = -mat33::skew_symmetric(p_C);
 
-	// float3 d_proj_dp_C1 = make_float3(alpha * a, 0.f, beta * e);
-	// float3 d_proj_dp_C2 = make_float3(0.f, alpha * b, gamma * e);
+	float3 d_proj_dp_C1 = make_float3(alpha * a, 0.f, beta * e);
+	float3 d_proj_dp_C2 = make_float3(0.f, alpha * b, gamma * e);
 
-	// float3 d_proj_dp_C1_d_rho = dp_C_d_rho.transpose() * d_proj_dp_C1; // x.T A = A.T x
-	// float3 d_proj_dp_C2_d_rho = dp_C_d_rho.transpose() * d_proj_dp_C2;
-	// float3 d_proj_dp_C1_d_theta = dp_C_d_theta.transpose() * d_proj_dp_C1;
-	// float3 d_proj_dp_C2_d_theta = dp_C_d_theta.transpose() * d_proj_dp_C2;
+	float3 d_proj_dp_C1_d_rho = dp_C_d_rho.transpose() * d_proj_dp_C1; // x.T A = A.T x
+	float3 d_proj_dp_C2_d_rho = dp_C_d_rho.transpose() * d_proj_dp_C2;
+	float3 d_proj_dp_C1_d_theta = dp_C_d_theta.transpose() * d_proj_dp_C1;
+	float3 d_proj_dp_C2_d_theta = dp_C_d_theta.transpose() * d_proj_dp_C2;
 
-	// float2 dmean2D_dtau[6];
-	// dmean2D_dtau[0].x = d_proj_dp_C1_d_rho.x;
-	// dmean2D_dtau[1].x = d_proj_dp_C1_d_rho.y;
-	// dmean2D_dtau[2].x = d_proj_dp_C1_d_rho.z;
-	// dmean2D_dtau[3].x = d_proj_dp_C1_d_theta.x;
-	// dmean2D_dtau[4].x = d_proj_dp_C1_d_theta.y;
-	// dmean2D_dtau[5].x = d_proj_dp_C1_d_theta.z;
+	float2 dmean2D_dtau[6];
+	dmean2D_dtau[0].x = d_proj_dp_C1_d_rho.x;
+	dmean2D_dtau[1].x = d_proj_dp_C1_d_rho.y;
+	dmean2D_dtau[2].x = d_proj_dp_C1_d_rho.z;
+	dmean2D_dtau[3].x = d_proj_dp_C1_d_theta.x;
+	dmean2D_dtau[4].x = d_proj_dp_C1_d_theta.y;
+	dmean2D_dtau[5].x = d_proj_dp_C1_d_theta.z;
 
-	// dmean2D_dtau[0].y = d_proj_dp_C2_d_rho.x;
-	// dmean2D_dtau[1].y = d_proj_dp_C2_d_rho.y;
-	// dmean2D_dtau[2].y = d_proj_dp_C2_d_rho.z;
-	// dmean2D_dtau[3].y = d_proj_dp_C2_d_theta.x;
-	// dmean2D_dtau[4].y = d_proj_dp_C2_d_theta.y;
-	// dmean2D_dtau[5].y = d_proj_dp_C2_d_theta.z;
+	dmean2D_dtau[0].y = d_proj_dp_C2_d_rho.x;
+	dmean2D_dtau[1].y = d_proj_dp_C2_d_rho.y;
+	dmean2D_dtau[2].y = d_proj_dp_C2_d_rho.z;
+	dmean2D_dtau[3].y = d_proj_dp_C2_d_theta.x;
+	dmean2D_dtau[4].y = d_proj_dp_C2_d_theta.y;
+	dmean2D_dtau[5].y = d_proj_dp_C2_d_theta.z;
 
-	// float df_dt[6];
-	// for (int i = 0; i < 6; i++) {
-	// 	df_dt[i] = df_dmean2D[global_idx].x * dmean2D_dtau[i].x + df_dmean2D[global_idx].y * dmean2D_dtau[i].y;
-	// }
-	// for (int i = 0; i < 6; i++) {
-	// 	df_dtau[6 * global_idx + i] += df_dt[i];
-	// }
+	float df_dt[6];
+	for (int i = 0; i < 6; i++) {
+		df_dt[i] = df_dmean2D[global_idx].x * dmean2D_dtau[i].x + df_dmean2D[global_idx].y * dmean2D_dtau[i].y;
+	}
+	for (int i = 0; i < 6; i++) {
+		df_dtau[6 * global_idx + i] += df_dt[i];
+	}
 
-	// // Compute gradient update due to computing depths
-	// // p_orig = m
-	// // p_view = transformPoint4x3(p_orig, viewmatrix);
-	// // depth = p_view.z;
-	// float df_dpCz = df_ddepth[global_idx];
-	// df_dmeans[global_idx].x += df_dpCz * viewmatrix[2];
-	// df_dmeans[global_idx].y += df_dpCz * viewmatrix[6];
-	// df_dmeans[global_idx].z += df_dpCz * viewmatrix[10];
+	// Compute gradient update due to computing depths
+	// p_orig = m
+	// p_view = transformPoint4x3(p_orig, viewmatrix);
+	// depth = p_view.z;
+	float df_dpCz = df_ddepth[global_idx];
+	df_dmeans[global_idx].x += df_dpCz * viewmatrix[2];
+	df_dmeans[global_idx].y += df_dpCz * viewmatrix[6];
+	df_dmeans[global_idx].z += df_dpCz * viewmatrix[10];
 
-	// for (int i = 0; i < 3; i++) {
-	// 	float3 c_rho = dp_C_d_rho.cols[i];
-	// 	float3 c_theta = dp_C_d_theta.cols[i];
-	// 	df_dtau[6 * global_idx + i] += df_dpCz * c_rho.z;
-	// 	df_dtau[6 * global_idx + i + 3] += df_dpCz * c_theta.z;
-	// }
+	for (int i = 0; i < 3; i++) {
+		float3 c_rho = dp_C_d_rho.cols[i];
+		float3 c_theta = dp_C_d_theta.cols[i];
+		df_dtau[6 * global_idx + i] += df_dpCz * c_rho.z;
+		df_dtau[6 * global_idx + i + 3] += df_dpCz * c_theta.z;
+	}
 
-	// // Compute gradient updates due to computing colors from SHs
-	// if (shs)
-	// 	computeColorFromSH(global_idx, gaussian_idx, D, M, (glm::vec3*)means, *campos, shs, clamped, (glm::vec3*)df_dcolor, (glm::vec3*)df_dmeans, (glm::vec3*)df_dsh, df_dtau);
+	// Compute gradient updates due to computing colors from SHs
+	if (shs)
+		computeColorFromSH(global_idx, gaussian_idx, D, M, (glm::vec3*)means, *campos, shs, clamped, (glm::vec3*)df_dcolor, (glm::vec3*)df_dmeans, (glm::vec3*)df_dsh, df_dtau);
 
-	// // Compute gradient updates due to computing covariance from scale/rotation
-	// if (scales)
-	// 	computeCov3D(global_idx, gaussian_idx, scales[gaussian_idx], scale_modifier, rotations[gaussian_idx], df_dcov3D, df_dscale, df_drot);
+	// Compute gradient updates due to computing covariance from scale/rotation
+	if (scales)
+		computeCov3D(global_idx, gaussian_idx, scales[gaussian_idx], scale_modifier, rotations[gaussian_idx], df_dcov3D, df_dscale, df_drot);
 }
 
 template <typename T>
