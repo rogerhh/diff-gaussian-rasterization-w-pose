@@ -534,6 +534,13 @@ void CudaRasterizer::Rasterizer::backwardSketchJacobian(
 	const float* color_ptr = (colors_precomp != nullptr) ? colors_precomp : geomState.rgb;
     const float* depth_ptr = geomState.depths;
 
+        // cudaEvent_t render_start, render_stop, preprocess_start, preprocess_stop;
+        // cudaEventCreate(&render_start);
+        // cudaEventCreate(&render_stop);
+        // cudaEventCreate(&preprocess_start);
+        // cudaEventCreate(&preprocess_stop);
+        // cudaEventRecord(render_start);
+
 	CHECK_CUDA(BACKWARD::renderSketchJacobian(
                 sketch_mode,
                 sketch_dim,
@@ -564,6 +571,9 @@ void CudaRasterizer::Rasterizer::backwardSketchJacobian(
 		df_dcolor,
 		df_ddepth
     ), debug)
+
+        // cudaEventRecord(render_stop);
+        // cudaEventRecord(preprocess_start);
 
 	// Take care of the rest of preprocessing. Was the precomputed covariance
 	// given to us or a scales/rot pair? If precomputed, pass that. If not,
@@ -601,5 +611,15 @@ void CudaRasterizer::Rasterizer::backwardSketchJacobian(
 		(glm::vec4*)df_drot,
 		df_dtau,
                 df_dopacity), debug)
+
+
+        // cudaEventRecord(preprocess_stop);
+        // cudaEventSynchronize(render_stop);
+        // cudaEventSynchronize(preprocess_stop);
+        // float render_ms = 0;
+        // float preprocess_ms = 0;
+        // cudaEventElapsedTime(&render_ms, render_start, render_stop);
+        // cudaEventElapsedTime(&preprocess_ms, preprocess_start, preprocess_stop);
+        // std::cout << "Render time: " << render_ms << " ms, Preprocess time: " << preprocess_ms << " ms" << std::endl;
 
 }

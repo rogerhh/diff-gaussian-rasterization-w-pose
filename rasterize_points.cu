@@ -290,17 +290,28 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	M = sh.size(1);
   }
 
-  torch::Tensor df_dmeans3D = torch::zeros({d, P, 3}, means3D.options());
-  torch::Tensor df_dmeans2D = torch::zeros({d, P, 3}, means3D.options());
-  torch::Tensor df_dcolors = torch::zeros({d, P, NUM_CHANNELS}, means3D.options());
-  torch::Tensor df_ddepths = torch::zeros({d, P, 1}, means3D.options());
-  torch::Tensor df_dconic = torch::zeros({d, P, 2, 2}, means3D.options());
-  torch::Tensor df_dopacity = torch::zeros({d, P, 1}, means3D.options());
-  torch::Tensor df_dcov3D = torch::zeros({d, P, 6}, means3D.options());
-  torch::Tensor df_dsh = torch::zeros({d, P, M, 3}, means3D.options());
-  torch::Tensor df_dscales = torch::zeros({d, P, 3}, means3D.options());
-  torch::Tensor df_drotations = torch::zeros({d, P, 4}, means3D.options());
-  torch::Tensor df_dtau = torch::zeros({d, P, 6}, means3D.options());
+  torch::Tensor df_dmeans3D = torch::zeros({P, d, 3}, means3D.options());
+  torch::Tensor df_dmeans2D = torch::zeros({P, d, 3}, means3D.options());
+  torch::Tensor df_dcolors = torch::zeros({P, d, NUM_CHANNELS}, means3D.options());
+  torch::Tensor df_ddepths = torch::zeros({P, d, 1}, means3D.options());
+  torch::Tensor df_dconic = torch::zeros({P, d, 2, 2}, means3D.options());
+  torch::Tensor df_dopacity = torch::zeros({P, d, 1}, means3D.options());
+  torch::Tensor df_dcov3D = torch::zeros({P, d, 6}, means3D.options());
+  torch::Tensor df_dsh = torch::zeros({P, d, M, 3}, means3D.options());
+  torch::Tensor df_dscales = torch::zeros({P, d, 3}, means3D.options());
+  torch::Tensor df_drotations = torch::zeros({P, d, 4}, means3D.options());
+  torch::Tensor df_dtau = torch::zeros({P, d, 6}, means3D.options());
+  // torch::Tensor df_dmeans3D = torch::zeros({d, P, 3}, means3D.options());
+  // torch::Tensor df_dmeans2D = torch::zeros({d, P, 3}, means3D.options());
+  // torch::Tensor df_dcolors = torch::zeros({d, P, NUM_CHANNELS}, means3D.options());
+  // torch::Tensor df_ddepths = torch::zeros({d, P, 1}, means3D.options());
+  // torch::Tensor df_dconic = torch::zeros({d, P, 2, 2}, means3D.options());
+  // torch::Tensor df_dopacity = torch::zeros({d, P, 1}, means3D.options());
+  // torch::Tensor df_dcov3D = torch::zeros({d, P, 6}, means3D.options());
+  // torch::Tensor df_dsh = torch::zeros({d, P, M, 3}, means3D.options());
+  // torch::Tensor df_dscales = torch::zeros({d, P, 3}, means3D.options());
+  // torch::Tensor df_drotations = torch::zeros({d, P, 4}, means3D.options());
+  // torch::Tensor df_dtau = torch::zeros({d, P, 6}, means3D.options());
 
   if(P != 0)
   {  
