@@ -287,10 +287,10 @@ class _RasterizeGaussians(torch.autograd.Function):
                     assert(torch.allclose(sketch_grad_means2D[:, i, ...], correct_grad_means2D, atol=1e-5, rtol=1e-5))
                     assert(torch.allclose(sketch_grad_colors_precomp[:, i, ...], correct_grad_colors_precomp, atol=1e-5, rtol=1e-5))
                     assert(torch.allclose(sketch_grad_opacities[:, i, ...], correct_grad_opacities, atol=1e-5, rtol=1e-5))
-                    assert(torch.allclose(sketch_grad_means3D[:, i, ...], correct_grad_means3D, atol=1e-5, rtol=1e-5))
+                    assert torch.allclose(sketch_grad_means3D[:, i, ...], correct_grad_means3D, atol=1e-5, rtol=1e-5), f"i = {i}, {sketch_grad_means3D[:, i, ...]} != {correct_grad_means3D}"
                     assert(torch.allclose(sketch_grad_cov3Ds_precomp[:, i, ...], correct_grad_cov3Ds_precomp, atol=1e-3, rtol=1e-3))
                     assert(torch.allclose(sketch_grad_sh[:, i, ...], correct_grad_sh, atol=1e-5, rtol=1e-5))
-                    assert(torch.allclose(sketch_grad_scales[:, i, ...], correct_grad_scales, atol=1e-5, rtol=1e-5), f"{sketch_grad_scales[i]} != {correct_grad_scales}")
+                    assert torch.allclose(sketch_grad_scales[:, i, ...], correct_grad_scales, atol=1e-5, rtol=1e-5), f"{sketch_grad_scales[i]} != {correct_grad_scales}"
                     assert(torch.allclose(sketch_grad_rotations[:, i, ...], correct_grad_rotations, atol=1e-5, rtol=1e-5))
                     assert(torch.allclose(sketch_grad_tau[:, i, ...], correct_grad_tau, atol=1e-5, rtol=1e-5))
                 """
