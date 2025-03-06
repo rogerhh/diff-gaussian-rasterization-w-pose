@@ -235,15 +235,15 @@ class _RasterizeGaussians(torch.autograd.Function):
             if sketch_mode == 0:
                 grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_tau = _C.rasterize_gaussians_backward(*args)
             else:
-                timer = _C.GPUTimer()
-                timer.start()
+                # timer = _C.GPUTimer()
+                # timer.start()
                 # torch.cuda.synchronize()
                 # rasterize_gaussians_c_backward_start = time.time()
                 sketch_grad_means2D, sketch_grad_colors_precomp, sketch_grad_opacities, sketch_grad_means3D, sketch_grad_cov3Ds_precomp, sketch_grad_sh, sketch_grad_scales, sketch_grad_rotations, sketch_grad_tau = _C.rasterize_gaussians_backward_sketch_jacobian(*args)
                 # torch.cuda.synchronize()
                 # rasterize_gaussians_c_backward_end = time.time()
                 # print(f"rasterize_gaussians_c_backward_time_ms: {(rasterize_gaussians_c_backward_end - rasterize_gaussians_c_backward_start) * 1000}")
-                rasterize_gaussians_c_backward_ms = timer.stop_clock_get_elapsed()
+                # rasterize_gaussians_c_backward_ms = timer.stop_clock_get_elapsed()
                 # print(f"rasterize_gaussians_c_backward_time_ms: {rasterize_gaussians_c_backward_ms}")
 
                 """
