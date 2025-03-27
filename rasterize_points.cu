@@ -55,6 +55,11 @@ RasterizeGaussiansCUDA(
 	const bool prefiltered,
 	const bool debug)
 {
+  cudaError_t err = cudaSetDevice(means3D.device().index());
+  if (err != cudaSuccess) {
+    AT_ERROR("CUDA error: ", cudaGetErrorString(err));
+  }
+
   if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
     AT_ERROR("means3D must have dimensions (num_points, 3)");
   }
@@ -72,7 +77,7 @@ RasterizeGaussiansCUDA(
   torch::Tensor out_depth = torch::full({1, H, W}, 0.0, float_opts);
   torch::Tensor out_opaticy = torch::full({1, H, W}, 0.0, float_opts);
 
-  torch::Device device(torch::kCUDA);
+  torch::Device device = means3D.device();
   torch::TensorOptions options(torch::kByte);
   torch::Tensor geomBuffer = torch::empty({0}, options.device(device));
   torch::Tensor binningBuffer = torch::empty({0}, options.device(device));
@@ -173,6 +178,11 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
         const torch::Tensor& selected_gaussian_bools,
 	const bool debug) 
 {
+  cudaError_t err = cudaSetDevice(means3D.device().index());
+  if (err != cudaSuccess) {
+    AT_ERROR("CUDA error: ", cudaGetErrorString(err));
+  }
+
   const int P = means3D.size(0);
   const int H = dL_dout_color.size(1);
   const int W = dL_dout_color.size(2);
@@ -277,6 +287,11 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
         const torch::Tensor& sketch_indices,
 	const bool debug) 
 {
+  cudaError_t err = cudaSetDevice(means3D.device().index());
+  if (err != cudaSuccess) {
+    AT_ERROR("CUDA error: ", cudaGetErrorString(err));
+  }
+
   const int P = means3D.size(0);
   const int H = df_dout_color.size(1);
   const int W = df_dout_color.size(2);
