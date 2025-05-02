@@ -211,6 +211,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             if sketch_mode == 0:
                 grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_tau = _C.rasterize_gaussians_backward(*args)
             else:
+                # sketch_grad_tau = torch.zeros((sketch_dtau.shape), device=sketch_dtau.device)
                 sketch_grad_tau = torch.empty((sketch_dtau.shape), device=sketch_dtau.device)
 
                 for j in range(stack_dim):
@@ -250,7 +251,33 @@ class _RasterizeGaussians(torch.autograd.Function):
 
                     sketch_grad_means2D_j, sketch_grad_colors_precomp_j, sketch_grad_opacities_j, sketch_grad_means3D_j, sketch_grad_cov3Ds_precomp_j, sketch_grad_sh_j, sketch_grad_scales_j, sketch_grad_rotations_j, sketch_grad_tau_j = _C.rasterize_gaussians_backward_sketch_jacobian(*args)
 
-                    sketch_grad_tau[j] = torch.sum(sketch_grad_tau_j, dim=0)
+                    # torch.cuda.synchronize()
+
+                    # sum_start = time.time()
+                    # try:
+                    #     chunk_size = 65536 # 2^16
+                    #     sum_dim = sketch_grad_tau_j.shape[0]
+                    #     chunk_start = 0
+                    #     while chunk_start < sum_dim:
+                    #         if sum_dim - chunk_start >= 2 * chunk_size:
+                    #             chunk_end = chunk_start + chunk_size
+                    #         else:
+                    #             chunk_end = sum_dim
+                    #         sketch_grad_tau[j] += sketch_grad_tau_j[chunk_start:chunk_end].sum(dim=0)
+                    #         chunk_start = chunk_end
+
+                    # except:
+                    #     print("Error in sketch_grad_tau")
+                    #     import code; code.interact(local=locals())
+                    # torch.cuda.synchronize()
+                    # sum_end = time.time()
+
+                    try:
+                        sketch_grad_tau[j] = sketch_grad_tau_j.sum(dim=0)
+                    except:
+                        print("Error in sketch_grad_tau")
+                        import code; code.interact(local=locals())
+
 
                     """
                     for i in range(sketch_dim):
