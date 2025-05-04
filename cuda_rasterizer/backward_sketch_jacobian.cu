@@ -647,7 +647,10 @@ renderSketchJacobianCUDA(
 	const bool inside = pix.x < W&& pix.y < H;
 	const uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
 
-        const int sketch_idx = sketch_mode == 0? 0 : sketch_indices[pix_id];
+        // NOTE: Need this to not cause an illegal access
+        const int sketch_idx = sketch_mode == 0? 0 : 
+                  !inside? -1 : sketch_indices[pix_id];
+        assert(sketch_idx >= 0 || sketch_idx == -1);
         if (sketch_idx >= sketch_dim || sketch_idx < 0) {
             // Cannot return because the thread is needed to load data
         }
