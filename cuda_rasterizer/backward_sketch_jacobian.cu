@@ -18,8 +18,6 @@
 #include <iostream>
 #include <cuda_runtime.h>
 
-#define MAX_SKETCH_DIM 32
-
 namespace cg = cooperative_groups;
 
 // Backward pass for conversion of spherical harmonics to RGB for
@@ -607,7 +605,7 @@ __device__ void render_cuda_reduce_sum(group_t g, Lists... lists) {
 }
 
 // Backward version of the rendering procedure.
-template <uint32_t C>
+template <uint32_t C, uint32_t MAX_SKETCH_DIM>
 __global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
 renderSketchJacobianCUDA(
         const int sketch_mode,
@@ -649,9 +647,12 @@ renderSketchJacobianCUDA(
 	const bool inside = pix.x < W&& pix.y < H;
 	const uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
 
-        const int sketch_idx = sketch_mode == 0? 0 : sketch_indices[pix_id];
+        // NOTE: Need this to not cause an illegal access
+        const int sketch_idx = sketch_mode == 0? 0 : 
+                  !inside? -1 : sketch_indices[pix_id];
+        assert(sketch_idx >= 0 || sketch_idx == -1);
         if (sketch_idx >= sketch_dim || sketch_idx < 0) {
-            return;
+            // Cannot return because the thread is needed to load data
         }
 
 	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
@@ -860,18 +861,21 @@ renderSketchJacobianCUDA(
 			// 	atomicAdd(&df_ddepths[global_id], df_ddepths_acc);
 			// }
 
-                        atomicAdd(&df_dmean2D_sketch_shared[sketch_idx].x, df_dmean2D_shared[tid].x);
-                        atomicAdd(&df_dmean2D_sketch_shared[sketch_idx].y, df_dmean2D_shared[tid].y);
-                        atomicAdd(&df_dconic2D_sketch_shared[sketch_idx].x, df_dconic2D_shared[tid].x);
-                        atomicAdd(&df_dconic2D_sketch_shared[sketch_idx].y, df_dconic2D_shared[tid].y);
-                        atomicAdd(&df_dconic2D_sketch_shared[sketch_idx].w, df_dconic2D_shared[tid].w);
-                        atomicAdd(&df_dopacity_sketch_shared[sketch_idx], df_dopacity_shared[tid]);
-                        atomicAdd(&df_dcolors_sketch_shared[sketch_idx].x, df_dcolors_shared[tid].x);
-                        atomicAdd(&df_dcolors_sketch_shared[sketch_idx].y, df_dcolors_shared[tid].y);
-                        atomicAdd(&df_dcolors_sketch_shared[sketch_idx].z, df_dcolors_shared[tid].z);
-                        atomicAdd(&df_ddepths_sketch_shared[sketch_idx], df_ddepths_shared[tid]);
+                        if(sketch_idx >= 0 && sketch_idx < sketch_dim) {
+                            atomicAdd(&df_dmean2D_sketch_shared[sketch_idx].x, df_dmean2D_shared[tid].x);
+                            atomicAdd(&df_dmean2D_sketch_shared[sketch_idx].y, df_dmean2D_shared[tid].y);
+                            atomicAdd(&df_dconic2D_sketch_shared[sketch_idx].x, df_dconic2D_shared[tid].x);
+                            atomicAdd(&df_dconic2D_sketch_shared[sketch_idx].y, df_dconic2D_shared[tid].y);
+                            atomicAdd(&df_dconic2D_sketch_shared[sketch_idx].w, df_dconic2D_shared[tid].w);
+                            atomicAdd(&df_dopacity_sketch_shared[sketch_idx], df_dopacity_shared[tid]);
+                            atomicAdd(&df_dcolors_sketch_shared[sketch_idx].x, df_dcolors_shared[tid].x);
+                            atomicAdd(&df_dcolors_sketch_shared[sketch_idx].y, df_dcolors_shared[tid].y);
+                            atomicAdd(&df_dcolors_sketch_shared[sketch_idx].z, df_dcolors_shared[tid].z);
+                            atomicAdd(&df_ddepths_sketch_shared[sketch_idx], df_ddepths_shared[tid]);
+                        }
 
                         block.sync();
+
 
                         // Then sum to global memory
                         if (tid < sketch_dim) {
@@ -930,7 +934,8 @@ void BACKWARD::preprocessSketchJacobian(
                    sketch_dim <= 2? 2 :
                    sketch_dim <= 4? 4 :
                    sketch_dim <= 8? 8 :
-                   sketch_dim <= 16? 16 : 32;
+                   sketch_dim <= 16? 16 :
+                   sketch_dim <= 32? 32 : 64;
 
         int y_dim = threads_per_block / x_dim;
 
@@ -1024,31 +1029,193 @@ void BACKWARD::renderSketchJacobian(
 	float* df_dcolors,
 	float* df_ddepths)
 {
-
-    renderSketchJacobianCUDA<NUM_CHANNELS> << <grid, block >> >(
-            sketch_mode,
-            sketch_dim,
-            sketch_indices,
-            ranges,
-            point_list,
-            W, H,
-            P,
-            bg_color,
-            means2D,
-            conic_opacity,
-            colors,
-            depths,
-            final_Ts,
-            n_contrib,
-            selected_gaussian_size,
-            selected_gaussian_indices,
-            selected_gaussian_bools,
-            df_dpixels,
-            df_dpixels_depth,
-            df_dmean2D,
-            df_dconic2D,
-            df_dopacity,
-            df_dcolors,
-            df_ddepths);
-
+    if(sketch_dim <= 1) {
+        renderSketchJacobianCUDA<NUM_CHANNELS, 1> << <grid, block >> >(
+                sketch_mode,
+                sketch_dim,
+                sketch_indices,
+                ranges,
+                point_list,
+                W, H,
+                P,
+                bg_color,
+                means2D,
+                conic_opacity,
+                colors,
+                depths,
+                final_Ts,
+                n_contrib,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
+                df_dpixels,
+                df_dpixels_depth,
+                df_dmean2D,
+                df_dconic2D,
+                df_dopacity,
+                df_dcolors,
+                df_ddepths);
+    }
+    else if(sketch_dim <= 2) {
+        renderSketchJacobianCUDA<NUM_CHANNELS, 2> << <grid, block >> >(
+                sketch_mode,
+                sketch_dim,
+                sketch_indices,
+                ranges,
+                point_list,
+                W, H,
+                P,
+                bg_color,
+                means2D,
+                conic_opacity,
+                colors,
+                depths,
+                final_Ts,
+                n_contrib,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
+                df_dpixels,
+                df_dpixels_depth,
+                df_dmean2D,
+                df_dconic2D,
+                df_dopacity,
+                df_dcolors,
+                df_ddepths);
+    }
+    else if(sketch_dim <= 4) {
+        renderSketchJacobianCUDA<NUM_CHANNELS, 4> << <grid, block >> >(
+                sketch_mode,
+                sketch_dim,
+                sketch_indices,
+                ranges,
+                point_list,
+                W, H,
+                P,
+                bg_color,
+                means2D,
+                conic_opacity,
+                colors,
+                depths,
+                final_Ts,
+                n_contrib,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
+                df_dpixels,
+                df_dpixels_depth,
+                df_dmean2D,
+                df_dconic2D,
+                df_dopacity,
+                df_dcolors,
+                df_ddepths);
+    }
+    else if(sketch_dim <= 8) {
+        renderSketchJacobianCUDA<NUM_CHANNELS, 8> << <grid, block >> >(
+                sketch_mode,
+                sketch_dim,
+                sketch_indices,
+                ranges,
+                point_list,
+                W, H,
+                P,
+                bg_color,
+                means2D,
+                conic_opacity,
+                colors,
+                depths,
+                final_Ts,
+                n_contrib,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
+                df_dpixels,
+                df_dpixels_depth,
+                df_dmean2D,
+                df_dconic2D,
+                df_dopacity,
+                df_dcolors,
+                df_ddepths);
+    }
+    else if(sketch_dim <= 16) {
+        renderSketchJacobianCUDA<NUM_CHANNELS, 16> << <grid, block >> >(
+                sketch_mode,
+                sketch_dim,
+                sketch_indices,
+                ranges,
+                point_list,
+                W, H,
+                P,
+                bg_color,
+                means2D,
+                conic_opacity,
+                colors,
+                depths,
+                final_Ts,
+                n_contrib,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
+                df_dpixels,
+                df_dpixels_depth,
+                df_dmean2D,
+                df_dconic2D,
+                df_dopacity,
+                df_dcolors,
+                df_ddepths);
+    }
+    else if(sketch_dim <= 32) {
+        renderSketchJacobianCUDA<NUM_CHANNELS, 32> << <grid, block >> >(
+                sketch_mode,
+                sketch_dim,
+                sketch_indices,
+                ranges,
+                point_list,
+                W, H,
+                P,
+                bg_color,
+                means2D,
+                conic_opacity,
+                colors,
+                depths,
+                final_Ts,
+                n_contrib,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
+                df_dpixels,
+                df_dpixels_depth,
+                df_dmean2D,
+                df_dconic2D,
+                df_dopacity,
+                df_dcolors,
+                df_ddepths);
+    }
+    else if(sketch_dim <= 64) {
+        renderSketchJacobianCUDA<NUM_CHANNELS, 64> << <grid, block >> >(
+                sketch_mode,
+                sketch_dim,
+                sketch_indices,
+                ranges,
+                point_list,
+                W, H,
+                P,
+                bg_color,
+                means2D,
+                conic_opacity,
+                colors,
+                depths,
+                final_Ts,
+                n_contrib,
+                selected_gaussian_size,
+                selected_gaussian_indices,
+                selected_gaussian_bools,
+                df_dpixels,
+                df_dpixels_depth,
+                df_dmean2D,
+                df_dconic2D,
+                df_dopacity,
+                df_dcolors,
+                df_ddepths);
+    }
 }

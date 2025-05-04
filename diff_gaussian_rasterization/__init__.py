@@ -34,6 +34,7 @@ def rasterize_gaussians(
     num_backward_gaussians=-1,
     sketch_mode=0,
     sketch_dim=0,
+    stack_dim=0,
     sketch_dtau=None,
     sketch_indices=None,
 ):
@@ -52,6 +53,7 @@ def rasterize_gaussians(
         num_backward_gaussians,
         sketch_mode,
         sketch_dim,
+        stack_dim,
         sketch_dtau,
         sketch_indices,
     )
@@ -74,6 +76,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         num_backward_gaussians,
         sketch_mode,
         sketch_dim,
+        stack_dim,
         sketch_dtau,
         sketch_indices,
     ):
@@ -116,6 +119,8 @@ class _RasterizeGaussians(torch.autograd.Function):
 
         ctx.sketch_mode = sketch_mode
         ctx.sketch_dim = sketch_dim
+        ctx.stack_dim = stack_dim
+        ctx.repeat_iter = 0
 
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings
@@ -123,7 +128,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         if num_backward_gaussians > 0:
             num_backward_gaussians = min(num_backward_gaussians, radii.shape[0])
         ctx.num_backward_gaussians = num_backward_gaussians
-        ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer, sketch_dtau, sketch_indices)
+        ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer, sketch_dtau, sketch_indices, )
 
         """
         # THIS SECTION CURRENTLY DISABLED
@@ -151,6 +156,8 @@ class _RasterizeGaussians(torch.autograd.Function):
 
         sketch_mode = ctx.sketch_mode
         sketch_dim = ctx.sketch_dim
+        stack_dim = ctx.stack_dim
+        repeat_iter = ctx.repeat_iter
 
         select_pixels = False
         selected_pixel_indices = torch.zeros(0, dtype=torch.int32)
@@ -159,38 +166,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         selected_bools = torch.zeros(0, dtype=torch.bool)
 
         if not raster_settings.debug and sketch_mode != 0:
-            # Restructure args as C++ method expects them
-            args = (raster_settings.bg,
-                    means3D,
-                    radii,
-                    colors_precomp,
-                    scales,
-                    rotations,
-                    raster_settings.scale_modifier,
-                    cov3Ds_precomp,
-                    raster_settings.viewmatrix,
-                    raster_settings.projmatrix,
-                    raster_settings.projmatrix_raw,
-                    raster_settings.tanfovx,
-                    raster_settings.tanfovy,
-                    grad_out_color,
-                    grad_out_depth,
-                    sh,
-                    raster_settings.sh_degree,
-                    raster_settings.campos,
-                    geomBuffer,
-                    num_rendered,
-                    binningBuffer,
-                    imgBuffer,
-                    select_pixels,
-                    selected_pixel_indices,
-                    select_gaussians,
-                    selected_indices,
-                    selected_bools,
-                    sketch_mode,
-                    sketch_dim,
-                    sketch_indices,
-                    raster_settings.debug)
+            pass
         else:
             # Restructure args as C++ method expects them
             args = (raster_settings.bg,
@@ -235,24 +211,10 @@ class _RasterizeGaussians(torch.autograd.Function):
             if sketch_mode == 0:
                 grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations, grad_tau = _C.rasterize_gaussians_backward(*args)
             else:
-                timer = _C.GPUTimer()
-                timer.start()
-                # torch.cuda.synchronize()
-                # rasterize_gaussians_c_backward_start = time.time()
-                sketch_grad_means2D, sketch_grad_colors_precomp, sketch_grad_opacities, sketch_grad_means3D, sketch_grad_cov3Ds_precomp, sketch_grad_sh, sketch_grad_scales, sketch_grad_rotations, sketch_grad_tau = _C.rasterize_gaussians_backward_sketch_jacobian(*args)
-                # torch.cuda.synchronize()
-                # rasterize_gaussians_c_backward_end = time.time()
-                # print(f"rasterize_gaussians_c_backward_time_ms: {(rasterize_gaussians_c_backward_end - rasterize_gaussians_c_backward_start) * 1000}")
-                rasterize_gaussians_c_backward_ms = timer.stop_clock_get_elapsed()
-                # print(f"rasterize_gaussians_c_backward_time_ms: {rasterize_gaussians_c_backward_ms}")
+                # sketch_grad_tau = torch.zeros((sketch_dtau.shape), device=sketch_dtau.device)
+                sketch_grad_tau = torch.empty((sketch_dtau.shape), device=sketch_dtau.device)
 
-                """
-                for i in range(sketch_dim):
-                    grad_out_color_i = torch.zeros_like(grad_out_color, device=grad_out_color.device)
-                    grad_out_depth_i = torch.zeros_like(grad_out_depth, device=grad_out_depth.device)
-                    indices_i = sketch_indices == i
-                    grad_out_color_i[:, indices_i] = grad_out_color[:, indices_i]
-                    grad_out_depth_i[:, indices_i] = grad_out_depth[:, indices_i]
+                for j in range(stack_dim):
                     args = (raster_settings.bg,
                             means3D,
                             radii,
@@ -266,8 +228,8 @@ class _RasterizeGaussians(torch.autograd.Function):
                             raster_settings.projmatrix_raw,
                             raster_settings.tanfovx,
                             raster_settings.tanfovy,
-                            grad_out_color_i,
-                            grad_out_depth_i,
+                            grad_out_color,
+                            grad_out_depth,
                             sh,
                             raster_settings.sh_degree,
                             raster_settings.campos,
@@ -276,66 +238,142 @@ class _RasterizeGaussians(torch.autograd.Function):
                             binningBuffer,
                             imgBuffer,
                             select_pixels,
-                            selected_pixel_indices.to(torch.int32),
+                            selected_pixel_indices,
                             select_gaussians,
-                            selected_indices.to(torch.int32),
+                            selected_indices,
                             selected_bools,
+                            sketch_mode,
+                            sketch_dim,
+                            sketch_indices[repeat_iter, j],
                             raster_settings.debug)
 
-                    correct_grad_means2D, correct_grad_colors_precomp, correct_grad_opacities, correct_grad_means3D, correct_grad_cov3Ds_precomp, correct_grad_sh, correct_grad_scales, correct_grad_rotations, correct_grad_tau = _C.rasterize_gaussians_backward(*args)
+                    assert(sketch_dim <= 64)
 
-                    assert(torch.allclose(sketch_grad_means2D[:, i, ...], correct_grad_means2D, atol=1e-5, rtol=1e-5))
-                    assert(torch.allclose(sketch_grad_colors_precomp[:, i, ...], correct_grad_colors_precomp, atol=1e-5, rtol=1e-5))
-                    assert(torch.allclose(sketch_grad_opacities[:, i, ...], correct_grad_opacities, atol=1e-5, rtol=1e-5))
-                    assert(torch.allclose(sketch_grad_means3D[:, i, ...], correct_grad_means3D, atol=1e-5, rtol=1e-5))
-                    assert(torch.allclose(sketch_grad_cov3Ds_precomp[:, i, ...], correct_grad_cov3Ds_precomp, atol=1e-3, rtol=1e-3))
-                    assert(torch.allclose(sketch_grad_sh[:, i, ...], correct_grad_sh, atol=1e-5, rtol=1e-5))
-                    assert(torch.allclose(sketch_grad_scales[:, i, ...], correct_grad_scales, atol=1e-5, rtol=1e-5), f"{sketch_grad_scales[i]} != {correct_grad_scales}")
-                    assert(torch.allclose(sketch_grad_rotations[:, i, ...], correct_grad_rotations, atol=1e-5, rtol=1e-5))
-                    assert(torch.allclose(sketch_grad_tau[:, i, ...], correct_grad_tau, atol=1e-5, rtol=1e-5))
-                """
+                    sketch_grad_means2D_j, sketch_grad_colors_precomp_j, sketch_grad_opacities_j, sketch_grad_means3D_j, sketch_grad_cov3Ds_precomp_j, sketch_grad_sh_j, sketch_grad_scales_j, sketch_grad_rotations_j, sketch_grad_tau_j = _C.rasterize_gaussians_backward_sketch_jacobian(*args)
 
-                grad_means2D = torch.sum(sketch_grad_means2D, dim=1)
-                grad_colors_precomp = torch.sum(sketch_grad_colors_precomp, dim=1)
-                grad_opacities = torch.sum(sketch_grad_opacities, dim=1)
-                grad_means3D = torch.sum(sketch_grad_means3D, dim=1)
-                grad_cov3Ds_precomp = torch.sum(sketch_grad_cov3Ds_precomp, dim=1)
-                grad_sh = torch.sum(sketch_grad_sh, dim=1)
-                grad_scales = torch.sum(sketch_grad_scales, dim=1)
-                grad_rotations = torch.sum(sketch_grad_rotations, dim=1)
-                grad_tau = torch.sum(sketch_grad_tau, dim=1)
+                    # torch.cuda.synchronize()
 
-                sketch_grad_tau = torch.sum(sketch_grad_tau, dim=0)
+                    # sum_start = time.time()
+                    # try:
+                    #     chunk_size = 65536 # 2^16
+                    #     sum_dim = sketch_grad_tau_j.shape[0]
+                    #     chunk_start = 0
+                    #     while chunk_start < sum_dim:
+                    #         if sum_dim - chunk_start >= 2 * chunk_size:
+                    #             chunk_end = chunk_start + chunk_size
+                    #         else:
+                    #             chunk_end = sum_dim
+                    #         sketch_grad_tau[j] += sketch_grad_tau_j[chunk_start:chunk_end].sum(dim=0)
+                    #         chunk_start = chunk_end
 
-                # grad_means2D = torch.sum(sketch_grad_means2D, dim=0)
-                # grad_colors_precomp = torch.sum(sketch_grad_colors_precomp, dim=0)
-                # grad_opacities = torch.sum(sketch_grad_opacities, dim=0)
-                # grad_means3D = torch.sum(sketch_grad_means3D, dim=0)
-                # grad_cov3Ds_precomp = torch.sum(sketch_grad_cov3Ds_precomp, dim=0)
-                # grad_sh = torch.sum(sketch_grad_sh, dim=0)
-                # grad_scales = torch.sum(sketch_grad_scales, dim=0)
-                # grad_rotations = torch.sum(sketch_grad_rotations, dim=0)
-                # grad_tau = torch.sum(sketch_grad_tau, dim=0)
+                    # except:
+                    #     print("Error in sketch_grad_tau")
+                    #     import code; code.interact(local=locals())
+                    # torch.cuda.synchronize()
+                    # sum_end = time.time()
 
-                # sketch_grad_tau = torch.sum(sketch_grad_tau, dim=1)
+                    try:
+                        sketch_grad_tau[j] = sketch_grad_tau_j.sum(dim=0)
+                    except:
+                        print("Error in sketch_grad_tau")
+                        import code; code.interact(local=locals())
 
-        if select_gaussians:
 
-            norms = grad_tau.norm(dim=1) + 1e-8
-            norms = norms / norms.sum()
-            selected_indices = torch.multinomial(norms, num_backward_gaussians, replacement=True)
-            grad_tau[selected_indices] /= norms[selected_indices].view(-1, 1)
-            grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
-            grad_tau /= num_backward_gaussians
+                    """
+                    for i in range(sketch_dim):
+                        print(f"i, j = {i}, {j}")
+                        grad_out_color_i = torch.zeros_like(grad_out_color, device=grad_out_color.device)
+                        grad_out_depth_i = torch.zeros_like(grad_out_depth, device=grad_out_depth.device)
+                        indices_i = sketch_indices[repeat_iter, j] == i
+                        grad_out_color_i[:, indices_i] = grad_out_color[:, indices_i]
+                        grad_out_depth_i[:, indices_i] = grad_out_depth[:, indices_i]
+                        args = (raster_settings.bg,
+                                means3D,
+                                radii,
+                                colors_precomp,
+                                scales,
+                                rotations,
+                                raster_settings.scale_modifier,
+                                cov3Ds_precomp,
+                                raster_settings.viewmatrix,
+                                raster_settings.projmatrix,
+                                raster_settings.projmatrix_raw,
+                                raster_settings.tanfovx,
+                                raster_settings.tanfovy,
+                                grad_out_color_i,
+                                grad_out_depth_i,
+                                sh,
+                                raster_settings.sh_degree,
+                                raster_settings.campos,
+                                geomBuffer,
+                                num_rendered,
+                                binningBuffer,
+                                imgBuffer,
+                                select_pixels,
+                                selected_pixel_indices.to(torch.int32),
+                                select_gaussians,
+                                selected_indices.to(torch.int32),
+                                selected_bools,
+                                raster_settings.debug)
 
+                        correct_grad_means2D, correct_grad_colors_precomp, correct_grad_opacities, correct_grad_means3D, correct_grad_cov3Ds_precomp, correct_grad_sh, correct_grad_scales, correct_grad_rotations, correct_grad_tau = _C.rasterize_gaussians_backward(*args)
+
+                        assert(torch.allclose(sketch_grad_means2D_j[:, i, ...], correct_grad_means2D, atol=1e-5, rtol=1e-5))
+                        assert(torch.allclose(sketch_grad_colors_precomp_j[:, i, ...], correct_grad_colors_precomp, atol=1e-5, rtol=1e-5)), f"i = {i}, {sketch_grad_colors_precomp_j[i]} != {correct_grad_colors_precomp}"
+                        assert(torch.allclose(sketch_grad_opacities_j[:, i, ...], correct_grad_opacities, atol=1e-5, rtol=1e-5))
+                        assert torch.allclose(sketch_grad_means3D_j[:, i, ...], correct_grad_means3D, atol=1e-5, rtol=1e-5), f"i = {i}, {sketch_grad_means3D_j[:, i, ...]} != {correct_grad_means3D}"
+                        assert(torch.allclose(sketch_grad_cov3Ds_precomp_j[:, i, ...], correct_grad_cov3Ds_precomp, atol=1e-3, rtol=1e-3))
+                        assert(torch.allclose(sketch_grad_sh_j[:, i, ...], correct_grad_sh, atol=1e-5, rtol=1e-5))
+                        assert torch.allclose(sketch_grad_scales_j[:, i, ...], correct_grad_scales, atol=1e-5, rtol=1e-5), f"{sketch_grad_scales_j[i]} != {correct_grad_scales}"
+                        assert(torch.allclose(sketch_grad_rotations_j[:, i, ...], correct_grad_rotations, atol=1e-5, rtol=1e-5))
+                        assert(torch.allclose(sketch_grad_tau_j[:, i, ...], correct_grad_tau, atol=1e-5, rtol=1e-5))
+
+                        print("Sketch Jacobian test passed")
+                        """
+
+                # grad_means2D = torch.sum(sketch_grad_means2D, dim=1)
+                # grad_colors_precomp = torch.sum(sketch_grad_colors_precomp, dim=1)
+                # grad_opacities = torch.sum(sketch_grad_opacities, dim=1)
+                # grad_means3D = torch.sum(sketch_grad_means3D, dim=1)
+                # grad_cov3Ds_precomp = torch.sum(sketch_grad_cov3Ds_precomp, dim=1)
+                # grad_sh = torch.sum(sketch_grad_sh, dim=1)
+                # grad_scales = torch.sum(sketch_grad_scales, dim=1)
+                # grad_rotations = torch.sum(sketch_grad_rotations, dim=1)
+                # grad_tau = torch.sum(sketch_grad_tau, dim=1)
+
+                grad_means2D = None
+                grad_colors_precomp = None
+                grad_opacities = None
+                grad_means3D = None
+                grad_cov3Ds_precomp = None
+                grad_sh = None
+                grad_scales = None
+                grad_rotations = None
+                grad_tau = None
+                
+
+        if grad_tau is not None:
+            if select_gaussians:
+
+                norms = grad_tau.norm(dim=1) + 1e-8
+                norms = norms / norms.sum()
+                selected_indices = torch.multinomial(norms, num_backward_gaussians, replacement=True)
+                grad_tau[selected_indices] /= norms[selected_indices].view(-1, 1)
+                grad_tau = torch.sum(grad_tau.view(-1, 6)[selected_indices], dim=0)
+                grad_tau /= num_backward_gaussians
+
+            else:
+                grad_tau = torch.sum(grad_tau.view(-1, 6), dim=0)
+
+            grad_rho = grad_tau[:3].view(1, -1)
+            grad_theta = grad_tau[3:].view(1, -1)
         else:
-            grad_tau = torch.sum(grad_tau.view(-1, 6), dim=0)
-
-        grad_rho = grad_tau[:3].view(1, -1)
-        grad_theta = grad_tau[3:].view(1, -1)
+            grad_rho = None
+            grad_theta = None
 
         grad_sketch_mode = None
         grad_sketch_dim = None
+        grad_stack_dim = None
         grad_sketch_dtau = sketch_grad_tau if sketch_mode != 0 else None
         grad_sketch_indices = None
 
@@ -354,9 +392,12 @@ class _RasterizeGaussians(torch.autograd.Function):
             None,
             grad_sketch_mode,
             grad_sketch_dim,
+            grad_stack_dim,
             grad_sketch_dtau,
             grad_sketch_indices,
         )
+
+        ctx.repeat_iter += 1
 
         # # DEBUG
         # if select_pixels:
@@ -406,7 +447,7 @@ class GaussianRasterizer(nn.Module):
             
         return visible
 
-    def forward(self, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None, theta=None, rho=None, num_backward_gaussians=None, sketch_mode=0, sketch_dim=0, sketch_dtau=None, sketch_indices=None, ):
+    def forward(self, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None, theta=None, rho=None, num_backward_gaussians=None, sketch_mode=0, sketch_dim=0, stack_dim=0, sketch_dtau=None, sketch_indices=None,):
         
         raster_settings = self.raster_settings
 
@@ -449,7 +490,8 @@ class GaussianRasterizer(nn.Module):
             num_backward_gaussians=num_backward_gaussians,
             sketch_mode=sketch_mode,
             sketch_dim=sketch_dim,
+            stack_dim=stack_dim,
             sketch_dtau=sketch_dtau,
-            sketch_indices=sketch_indices
+            sketch_indices=sketch_indices,
         )
 
