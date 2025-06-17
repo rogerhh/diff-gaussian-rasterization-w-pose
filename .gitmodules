@@ -4,3 +4,4 @@
 [submodule "third_party/auto-jvp-example"]
 	path = third_party/auto-jvp-example
 	url = git@github.com:rogerhh/auto-jvp-example.git
+        branch = main

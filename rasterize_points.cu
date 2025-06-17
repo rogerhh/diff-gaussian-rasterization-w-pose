@@ -23,38 +23,41 @@
 #include <fstream>
 #include <string>
 #include <functional>
+#include "float_grad.h"
 
 std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
     auto lambda = [&t](size_t N) {
         t.resize_({(long long)N});
-		return reinterpret_cast<char*>(t.contiguous().data_ptr());
+        return reinterpret_cast<char*>(t.contiguous().data_ptr());
     };
     return lambda;
 }
 
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
-	const torch::Tensor& background,
-	const torch::Tensor& means3D,
+    const torch::Tensor& background,
+    const torch::Tensor& means3D,
     const torch::Tensor& colors,
     const torch::Tensor& opacity,
-	const torch::Tensor& scales,
-	const torch::Tensor& rotations,
-	const float scale_modifier,
-	const torch::Tensor& cov3D_precomp,
-	const torch::Tensor& viewmatrix,
-	const torch::Tensor& projmatrix,
+    const torch::Tensor& scales,
+    const torch::Tensor& rotations,
+    const float scale_modifier,
+    const torch::Tensor& cov3D_precomp,
+    const torch::Tensor& viewmatrix,
+    const torch::Tensor& projmatrix,
     const torch::Tensor& projmatrix_raw,
     const float tan_fovx,
-	const float tan_fovy,
+    const float tan_fovy,
     const int image_height,
     const int image_width,
-	const torch::Tensor& sh,
-	const int degree,
-	const torch::Tensor& campos,
-	const bool prefiltered,
-	const bool debug)
+    const torch::Tensor& sh,
+    const int degree,
+    const torch::Tensor& campos,
+    const bool prefiltered,
+    const bool debug)
 {
+  constexpr int NUM_CHANNELS = CudaRasterizer::NUM_CHANNELS;
+
   cudaError_t err = cudaSetDevice(means3D.device().index());
   if (err != cudaSuccess) {
     AT_ERROR("CUDA error: ", cudaGetErrorString(err));
@@ -89,47 +92,47 @@ RasterizeGaussiansCUDA(
   int rendered = 0;
   if(P != 0)
   {
-	  int M = 0;
-	  if(sh.size(0) != 0)
-	  {
-		M = sh.size(1);
+      int M = 0;
+      if(sh.size(0) != 0)
+      {
+        M = sh.size(1);
       }
 
-	  rendered = CudaRasterizer::Rasterizer::forward(
-	    geomFunc,
-		binningFunc,
-		imgFunc,
-	    P, degree, M,
-		background.contiguous().data<float>(),
-		W, H,
-		means3D.contiguous().data<float>(),
-		sh.contiguous().data_ptr<float>(),
-		colors.contiguous().data<float>(), 
-		opacity.contiguous().data<float>(), 
-		scales.contiguous().data_ptr<float>(),
-		scale_modifier,
-		rotations.contiguous().data_ptr<float>(),
-		cov3D_precomp.contiguous().data<float>(), 
-		viewmatrix.contiguous().data<float>(), 
-		projmatrix.contiguous().data<float>(),
-		campos.contiguous().data<float>(),
-		tan_fovx,
-		tan_fovy,
-		prefiltered,
-		out_color.contiguous().data<float>(),
-		out_depth.contiguous().data<float>(),
-		out_opaticy.contiguous().data<float>(),
-		radii.contiguous().data<int>(),
-		n_touched.contiguous().data<int>(),
+      rendered = CudaRasterizer::Rasterizer::forward(
+        geomFunc,
+        binningFunc,
+        imgFunc,
+        P, degree, M,
+        background.contiguous().data<float>(),
+        W, H,
+        means3D.contiguous().data<float>(),
+        sh.contiguous().data_ptr<float>(),
+        colors.contiguous().data<float>(), 
+        opacity.contiguous().data<float>(), 
+        scales.contiguous().data_ptr<float>(),
+        scale_modifier,
+        rotations.contiguous().data_ptr<float>(),
+        cov3D_precomp.contiguous().data<float>(), 
+        viewmatrix.contiguous().data<float>(), 
+        projmatrix.contiguous().data<float>(),
+        campos.contiguous().data<float>(),
+        tan_fovx,
+        tan_fovy,
+        prefiltered,
+        out_color.contiguous().data<float>(),
+        out_depth.contiguous().data<float>(),
+        out_opaticy.contiguous().data<float>(),
+        radii.contiguous().data<int>(),
+        n_touched.contiguous().data<int>(),
         debug);
   }
   return std::make_tuple(rendered, out_color, radii, geomBuffer, binningBuffer, imgBuffer, out_depth, out_opaticy, n_touched);
 }
 
 torch::Tensor markVisible(
-		torch::Tensor& means3D,
-		torch::Tensor& viewmatrix,
-		torch::Tensor& projmatrix)
+        torch::Tensor& means3D,
+        torch::Tensor& viewmatrix,
+        torch::Tensor& projmatrix)
 { 
   const int P = means3D.size(0);
   
@@ -137,47 +140,159 @@ torch::Tensor markVisible(
  
   if(P != 0)
   {
-	CudaRasterizer::Rasterizer::markVisible(P,
-		means3D.contiguous().data<float>(),
-		viewmatrix.contiguous().data<float>(),
-		projmatrix.contiguous().data<float>(),
-		present.contiguous().data<bool>());
+    CudaRasterizer::Rasterizer::markVisible(P,
+        means3D.contiguous().data<float>(),
+        viewmatrix.contiguous().data<float>(),
+        projmatrix.contiguous().data<float>(),
+        present.contiguous().data<bool>());
   }
   
   return present;
 }
 
+std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+RasterizeGaussiansCUDAJvpPose(
+    const torch::Tensor& background,
+    const torch::Tensor& means3D,
+    const torch::Tensor& colors,
+    const torch::Tensor& opacity,
+    const torch::Tensor& scales,
+    const torch::Tensor& rotations,
+    const float scale_modifier,
+    const torch::Tensor& cov3D_precomp,
+    const torch::Tensor& viewmatrix_data,
+    const torch::Tensor& projmatrix_data,
+    const torch::Tensor& projmatrix_raw_data,
+    const float tan_fovx,
+    const float tan_fovy,
+    const int image_height,
+    const int image_width,
+    const torch::Tensor& sh,
+    const int degree,
+    const torch::Tensor& campos_data,
+    const bool prefiltered,
+    const bool debug,
+    const torch::Tensor& viewmatrix_grad,
+    const torch::Tensor& projmatrix_grad,
+    const torch::Tensor& projmatrix_raw_grad,
+    const torch::Tensor& campos_grad
+    )
+{
+  constexpr int NUM_CHANNELS = CudaRasterizer::NUM_CHANNELS;
+
+  cudaError_t err = cudaSetDevice(means3D.device().index());
+  if (err != cudaSuccess) {
+    AT_ERROR("CUDA error: ", cudaGetErrorString(err));
+  }
+
+  if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
+    AT_ERROR("means3D must have dimensions (num_points, 3)");
+  }
+  
+  const int P = means3D.size(0);
+  const int H = image_height;
+  const int W = image_width;
+
+  auto int_opts = means3D.options().dtype(torch::kInt32);
+  auto float_opts = means3D.options().dtype(torch::kFloat32);
+
+  torch::Tensor out_color_floatgrad = torch::full({2, NUM_CHANNELS, H, W}, 0.0, float_opts);
+  torch::Tensor radii = torch::full({P}, 0, means3D.options().dtype(torch::kInt32));
+  torch::Tensor n_touched = torch::full({P}, 0, means3D.options().dtype(torch::kInt32));
+  torch::Tensor out_depth_floatgrad = torch::full({2, 1, H, W}, 0.0, float_opts);
+  torch::Tensor out_opacity_floatgrad = torch::full({2, 1, H, W}, 0.0, float_opts);
+
+  torch::Device device = means3D.device();
+  torch::TensorOptions options(torch::kByte);
+  torch::Tensor geomBuffer = torch::empty({0}, options.device(device));
+  torch::Tensor binningBuffer = torch::empty({0}, options.device(device));
+  torch::Tensor imgBuffer = torch::empty({0}, options.device(device));
+  std::function<char*(size_t)> geomFunc = resizeFunctional(geomBuffer);
+  std::function<char*(size_t)> binningFunc = resizeFunctional(binningBuffer);
+  std::function<char*(size_t)> imgFunc = resizeFunctional(imgBuffer);
+
+  FloatGradArray<float> viewmatrix(viewmatrix_data.contiguous().data<float>(), 
+                                   viewmatrix_grad.contiguous().data<float>());
+  FloatGradArray<float> projmatrix(projmatrix_data.contiguous().data<float>(),
+                                   projmatrix_grad.contiguous().data<float>());
+  FloatGradArray<float> projmatrix_raw(projmatrix_raw_data.contiguous().data<float>(),
+                                       projmatrix_raw_grad.contiguous().data<float>());
+  FloatGradArray<float> campos(campos_data.contiguous().data<float>(),
+                               campos_grad.contiguous().data<float>());
+  
+  int rendered = 0;
+  if(P != 0)
+  {
+      int M = 0;
+      if(sh.size(0) != 0)
+      {
+        M = sh.size(1);
+      }
+
+      rendered = CudaRasterizer::Rasterizer::forwardJvp(
+        geomFunc,
+        binningFunc,
+        imgFunc,
+        P, degree, M,
+        background.contiguous().data<float>(),
+        W, H,
+        means3D.contiguous().data<float>(),
+        sh.contiguous().data_ptr<float>(),
+        colors.contiguous().data<float>(), 
+        opacity.contiguous().data<float>(), 
+        scales.contiguous().data_ptr<float>(),
+        scale_modifier,
+        rotations.contiguous().data_ptr<float>(),
+        cov3D_precomp.contiguous().data<float>(), 
+        tan_fovx,
+        tan_fovy,
+        prefiltered,
+        out_color_floatgrad.contiguous().data<float>(),
+        out_depth_floatgrad.contiguous().data<float>(),
+        out_opacity_floatgrad.contiguous().data<float>(),
+        radii.contiguous().data<int>(),
+        n_touched.contiguous().data<int>(),
+        debug,
+        viewmatrix, 
+        projmatrix,
+        campos);
+  }
+  return std::make_tuple(rendered, out_color_floatgrad, radii, geomBuffer, binningBuffer, imgBuffer, out_depth_floatgrad, out_opacity_floatgrad, n_touched);
+}
+
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
  RasterizeGaussiansBackwardCUDA(
- 	const torch::Tensor& background,
-	const torch::Tensor& means3D,
-	const torch::Tensor& radii,
+     const torch::Tensor& background,
+    const torch::Tensor& means3D,
+    const torch::Tensor& radii,
     const torch::Tensor& colors,
-	const torch::Tensor& scales,
-	const torch::Tensor& rotations,
-	const float scale_modifier,
-	const torch::Tensor& cov3D_precomp,
-	const torch::Tensor& viewmatrix,
+    const torch::Tensor& scales,
+    const torch::Tensor& rotations,
+    const float scale_modifier,
+    const torch::Tensor& cov3D_precomp,
+    const torch::Tensor& viewmatrix,
     const torch::Tensor& projmatrix,
     const torch::Tensor& projmatrix_raw,
     const float tan_fovx,
-	const float tan_fovy,
+    const float tan_fovy,
     const torch::Tensor& dL_dout_color,
-	const torch::Tensor& dL_dout_depths,
-	const torch::Tensor& sh,
-	const int degree,
-	const torch::Tensor& campos,
-	const torch::Tensor& geomBuffer,
-	const int R,
-	const torch::Tensor& binningBuffer,
-	const torch::Tensor& imageBuffer,
+    const torch::Tensor& dL_dout_depths,
+    const torch::Tensor& sh,
+    const int degree,
+    const torch::Tensor& campos,
+    const torch::Tensor& geomBuffer,
+    const int R,
+    const torch::Tensor& binningBuffer,
+    const torch::Tensor& imageBuffer,
         const bool select_pixels,
         const torch::Tensor& selected_pixel_indices,
         const bool select_gaussians,
         const torch::Tensor& selected_gaussian_indices,
         const torch::Tensor& selected_gaussian_bools,
-	const bool debug) 
+    const bool debug) 
 {
+  constexpr int NUM_CHANNELS = CudaRasterizer::NUM_CHANNELS;
+
   cudaError_t err = cudaSetDevice(means3D.device().index());
   if (err != cudaSuccess) {
     AT_ERROR("CUDA error: ", cudaGetErrorString(err));
@@ -191,8 +306,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
   
   int M = 0;
   if(sh.size(0) != 0)
-  {	
-	M = sh.size(1);
+  {    
+    M = sh.size(1);
   }
 
   torch::Tensor dL_dmeans3D = torch::zeros({P, 3}, means3D.options());
@@ -209,45 +324,45 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 
   if(P != 0)
   {  
-	  CudaRasterizer::Rasterizer::backward(P, degree, M, R,
-	  background.contiguous().data<float>(),
-	  W, H, 
-	  means3D.contiguous().data<float>(),
-	  sh.contiguous().data<float>(),
-	  colors.contiguous().data<float>(),
-	  scales.data_ptr<float>(),
-	  scale_modifier,
-	  rotations.data_ptr<float>(),
-	  cov3D_precomp.contiguous().data<float>(),
-	  viewmatrix.contiguous().data<float>(),
-	  projmatrix.contiguous().data<float>(),
+      CudaRasterizer::Rasterizer::backward(P, degree, M, R,
+      background.contiguous().data<float>(),
+      W, H, 
+      means3D.contiguous().data<float>(),
+      sh.contiguous().data<float>(),
+      colors.contiguous().data<float>(),
+      scales.data_ptr<float>(),
+      scale_modifier,
+      rotations.data_ptr<float>(),
+      cov3D_precomp.contiguous().data<float>(),
+      viewmatrix.contiguous().data<float>(),
+      projmatrix.contiguous().data<float>(),
       projmatrix_raw.contiguous().data<float>(),
-	  campos.contiguous().data<float>(),
-	  tan_fovx,
-	  tan_fovy,
-	  radii.contiguous().data<int>(),
-	  reinterpret_cast<char*>(geomBuffer.contiguous().data_ptr()),
-	  reinterpret_cast<char*>(binningBuffer.contiguous().data_ptr()),
-	  reinterpret_cast<char*>(imageBuffer.contiguous().data_ptr()),
+      campos.contiguous().data<float>(),
+      tan_fovx,
+      tan_fovy,
+      radii.contiguous().data<int>(),
+      reinterpret_cast<char*>(geomBuffer.contiguous().data_ptr()),
+      reinterpret_cast<char*>(binningBuffer.contiguous().data_ptr()),
+      reinterpret_cast<char*>(imageBuffer.contiguous().data_ptr()),
           num_backward_pixels,
           select_pixels? selected_pixel_indices.contiguous().data<int>(): nullptr,
           num_backward_gaussians,
           select_gaussians? selected_gaussian_indices.contiguous().data<int>(): nullptr,
           select_gaussians? selected_gaussian_bools.contiguous().data<bool>(): nullptr,
-	  dL_dout_color.contiguous().data<float>(),
-	  dL_dout_depths.contiguous().data<float>(),
-	  dL_dmeans2D.contiguous().data<float>(),
-	  dL_dconic.contiguous().data<float>(),  
-	  dL_dopacity.contiguous().data<float>(),
-	  dL_dcolors.contiguous().data<float>(),
-	  dL_ddepths.contiguous().data<float>(),
-	  dL_dmeans3D.contiguous().data<float>(),
-	  dL_dcov3D.contiguous().data<float>(),
-	  dL_dsh.contiguous().data<float>(),
-	  dL_dscales.contiguous().data<float>(),
-	  dL_drotations.contiguous().data<float>(),
+      dL_dout_color.contiguous().data<float>(),
+      dL_dout_depths.contiguous().data<float>(),
+      dL_dmeans2D.contiguous().data<float>(),
+      dL_dconic.contiguous().data<float>(),  
+      dL_dopacity.contiguous().data<float>(),
+      dL_dcolors.contiguous().data<float>(),
+      dL_ddepths.contiguous().data<float>(),
+      dL_dmeans3D.contiguous().data<float>(),
+      dL_dcov3D.contiguous().data<float>(),
+      dL_dsh.contiguous().data<float>(),
+      dL_dscales.contiguous().data<float>(),
+      dL_drotations.contiguous().data<float>(),
       dL_dtau.contiguous().data<float>(),
-	  debug);
+      debug);
   }
 
   return std::make_tuple(dL_dmeans2D, dL_dcolors, dL_dopacity, dL_dmeans3D, dL_dcov3D, dL_dsh, dL_dscales, dL_drotations, dL_dtau);
@@ -255,38 +370,40 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
  RasterizeGaussiansBackwardSketchJacobianCUDA(
- 	const torch::Tensor& background,
-	const torch::Tensor& means3D,
-	const torch::Tensor& radii,
-        const torch::Tensor& colors,
-        const torch::Tensor& scales,
-        const torch::Tensor& rotations,
-        const float scale_modifier,
-        const torch::Tensor& cov3D_precomp,
-        const torch::Tensor& viewmatrix,
-        const torch::Tensor& projmatrix,
-        const torch::Tensor& projmatrix_raw,
-        const float tan_fovx,
-        const float tan_fovy,
-        const torch::Tensor& df_dout_color,
-        const torch::Tensor& df_dout_depths,
-	const torch::Tensor& sh,
-	const int degree,
-	const torch::Tensor& campos,
-	const torch::Tensor& geomBuffer,
-	const int R,
-	const torch::Tensor& binningBuffer,
-	const torch::Tensor& imageBuffer,
-        const bool select_pixels,
-        const torch::Tensor& selected_pixel_indices,
-        const bool select_gaussians,
-        const torch::Tensor& selected_gaussian_indices,
-        const torch::Tensor& selected_gaussian_bools,
-        const int sketch_mode,
-        const int sketch_dim,
-        const torch::Tensor& sketch_indices,
-	const bool debug) 
+    const torch::Tensor& background,
+    const torch::Tensor& means3D,
+    const torch::Tensor& radii,
+    const torch::Tensor& colors,
+    const torch::Tensor& scales,
+    const torch::Tensor& rotations,
+    const float scale_modifier,
+    const torch::Tensor& cov3D_precomp,
+    const torch::Tensor& viewmatrix,
+    const torch::Tensor& projmatrix,
+    const torch::Tensor& projmatrix_raw,
+    const float tan_fovx,
+    const float tan_fovy,
+    const torch::Tensor& df_dout_color,
+    const torch::Tensor& df_dout_depths,
+    const torch::Tensor& sh,
+    const int degree,
+    const torch::Tensor& campos,
+    const torch::Tensor& geomBuffer,
+    const int R,
+    const torch::Tensor& binningBuffer,
+    const torch::Tensor& imageBuffer,
+    const bool select_pixels,
+    const torch::Tensor& selected_pixel_indices,
+    const bool select_gaussians,
+    const torch::Tensor& selected_gaussian_indices,
+    const torch::Tensor& selected_gaussian_bools,
+    const int sketch_mode,
+    const int sketch_dim,
+    const torch::Tensor& sketch_indices,
+    const bool debug) 
 {
+  constexpr int NUM_CHANNELS = CudaRasterizer::NUM_CHANNELS;
+
   cudaError_t err = cudaSetDevice(means3D.device().index());
   if (err != cudaSuccess) {
     AT_ERROR("CUDA error: ", cudaGetErrorString(err));
@@ -301,8 +418,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
   
   int M = 0;
   if(sh.size(0) != 0)
-  {	
-	M = sh.size(1);
+  {    
+    M = sh.size(1);
   }
 
   torch::Tensor df_dmeans3D = torch::zeros({P, d, 3}, means3D.options());
@@ -330,48 +447,48 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 
   if(P != 0)
   {  
-	  CudaRasterizer::Rasterizer::backwardSketchJacobian(
+      CudaRasterizer::Rasterizer::backwardSketchJacobian(
           sketch_mode, d,
           sketch_indices.contiguous().data<int>(),
           P, degree, M, R,
-	  background.contiguous().data<float>(),
-	  W, H, 
-	  means3D.contiguous().data<float>(),
-	  sh.contiguous().data<float>(),
-	  colors.contiguous().data<float>(),
-	  scales.data_ptr<float>(),
-	  scale_modifier,
-	  rotations.data_ptr<float>(),
-	  cov3D_precomp.contiguous().data<float>(),
-	  viewmatrix.contiguous().data<float>(),
-	  projmatrix.contiguous().data<float>(),
+          background.contiguous().data<float>(),
+          W, H, 
+          means3D.contiguous().data<float>(),
+          sh.contiguous().data<float>(),
+          colors.contiguous().data<float>(),
+          scales.data_ptr<float>(),
+          scale_modifier,
+          rotations.data_ptr<float>(),
+          cov3D_precomp.contiguous().data<float>(),
+          viewmatrix.contiguous().data<float>(),
+          projmatrix.contiguous().data<float>(),
           projmatrix_raw.contiguous().data<float>(),
-	  campos.contiguous().data<float>(),
-	  tan_fovx,
-	  tan_fovy,
-	  radii.contiguous().data<int>(),
-	  reinterpret_cast<char*>(geomBuffer.contiguous().data_ptr()),
-	  reinterpret_cast<char*>(binningBuffer.contiguous().data_ptr()),
-	  reinterpret_cast<char*>(imageBuffer.contiguous().data_ptr()),
+          campos.contiguous().data<float>(),
+          tan_fovx,
+          tan_fovy,
+          radii.contiguous().data<int>(),
+          reinterpret_cast<char*>(geomBuffer.contiguous().data_ptr()),
+          reinterpret_cast<char*>(binningBuffer.contiguous().data_ptr()),
+          reinterpret_cast<char*>(imageBuffer.contiguous().data_ptr()),
           num_backward_pixels,
           select_pixels? selected_pixel_indices.contiguous().data<int>(): nullptr,
           num_backward_gaussians,
           select_gaussians? selected_gaussian_indices.contiguous().data<int>(): nullptr,
           select_gaussians? selected_gaussian_bools.contiguous().data<bool>(): nullptr,
-	  df_dout_color.contiguous().data<float>(),
-	  df_dout_depths.contiguous().data<float>(),
-	  df_dmeans2D.contiguous().data<float>(),
-	  df_dconic.contiguous().data<float>(),  
-	  df_dopacity.contiguous().data<float>(),
-	  df_dcolors.contiguous().data<float>(),
-	  df_ddepths.contiguous().data<float>(),
-	  df_dmeans3D.contiguous().data<float>(),
-	  df_dcov3D.contiguous().data<float>(),
-	  df_dsh.contiguous().data<float>(),
-	  df_dscales.contiguous().data<float>(),
-	  df_drotations.contiguous().data<float>(),
+          df_dout_color.contiguous().data<float>(),
+          df_dout_depths.contiguous().data<float>(),
+          df_dmeans2D.contiguous().data<float>(),
+          df_dconic.contiguous().data<float>(),  
+          df_dopacity.contiguous().data<float>(),
+          df_dcolors.contiguous().data<float>(),
+          df_ddepths.contiguous().data<float>(),
+          df_dmeans3D.contiguous().data<float>(),
+          df_dcov3D.contiguous().data<float>(),
+          df_dsh.contiguous().data<float>(),
+          df_dscales.contiguous().data<float>(),
+          df_drotations.contiguous().data<float>(),
           df_dtau.contiguous().data<float>(),
-	  debug);
+          debug);
   }
 
   return std::make_tuple(df_dmeans2D, df_dcolors, df_dopacity, df_dmeans3D, df_dcov3D, df_dsh, df_dscales, df_drotations, df_dtau);
