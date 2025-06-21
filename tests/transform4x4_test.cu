@@ -8,21 +8,6 @@
 #include "float_grad.h"
 #include "helper_math.h"
 
-// Align args in the format of arg1, len1, arg2, len2, ...
-__host__ __device__
-void align_params(std::pair<float*, int>* args, 
-                  int len,
-                  float** aligned_args) {
-    int c = 0;
-    for (int i = 0; i < len; i++) {
-        float* args_ptr = args[i].first;
-        int args_len = args[i].second;
-        for (int j = 0; j < args_len; j++) {
-            aligned_args[c++] = &args_ptr[j];
-        }
-    }
-}
-
 __global__
 void call_transform(const float3* p, const float* matrix, float4* transformed) {
     float4 transformed_temp = transformPoint4x4(*p, matrix);
@@ -87,28 +72,7 @@ void call_transform_floatgrad(const float3* p_data,
     transformed = transformPoint4x4(p, matrix);
 }
 
-template <typename T>
-T* host_to_device(const T* ptr_host, size_t len) {
-    T* ptr_device = nullptr;
-    cudaError_t err;
-
-    // Allocate memory on the device
-    err = cudaMalloc((void**)&ptr_device, len * sizeof(T));
-    if (err != cudaSuccess) {
-        throw std::runtime_error("cudaMalloc failed: " + std::string(cudaGetErrorString(err)));
-    }
-
-    // Copy data from host to device
-    err = cudaMemcpy(ptr_device, ptr_host, len * sizeof(T), cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) {
-        cudaFree(ptr_device); // clean up
-        throw std::runtime_error("cudaMemcpy failed: " + std::string(cudaGetErrorString(err)));
-    }
-
-    return ptr_device;
-}
-
-TEST(ForwardTest, TranformPoint) {
+TEST(ForwardTest, TranformPoint4x4) {
     float3 p_host = {1.0f, 2.0f, 3.0f};
     float3 p_grad_host = {0.1f, 0.2f, 0.3f};
     float* matrix_host = new float[16];

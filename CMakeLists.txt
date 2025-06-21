@@ -51,10 +51,16 @@ target_include_directories(CudaRasterizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/cud
 target_include_directories(CudaRasterizer PRIVATE third_party/glm third_party/auto-jvp-example ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 
 add_executable(basic_tests
-    tests/main.cpp
-    tests/basic_tests.cu
+    tests/main.cu
+    tests/test_utils.cu
+    tests/transform4x4_test.cu
+    tests/in_frustum_test.cu
+    tests/vec4_tests.cu
 )
 
 target_include_directories(basic_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cuda_rasterizer ${CMAKE_CURRENT_SOURCE_DIR}/tests third_party/glm third_party/auto-jvp-example)
 target_link_libraries(basic_tests PRIVATE CudaRasterizer gtest gtest_main)
+
+# Copy tests/data into build directory
+file(COPY tests/data DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
 

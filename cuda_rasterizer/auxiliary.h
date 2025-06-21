@@ -15,6 +15,7 @@
 #include "config.h"
 #include "stdio.h"
 #include <tuple>
+#include "float_grad.h"
 
 namespace CudaRasterizer {
     constexpr int BLOCK_SIZE = BLOCK_X * BLOCK_Y;
@@ -71,6 +72,17 @@ __forceinline__ __device__ float3 transformPoint4x3(const float3& p, const float
         matrix[1] * p.x + matrix[5] * p.y + matrix[9] * p.z + matrix[13],
         matrix[2] * p.x + matrix[6] * p.y + matrix[10] * p.z + matrix[14],
     };
+    return transformed;
+}
+
+template <typename T1, typename T2>
+__forceinline__ __device__ auto transformPoint4x3(const T1& p, const T2 matrix)
+{
+    auto transformed = make_float3(
+        matrix[0] * p.x + matrix[4] * p.y + matrix[8] * p.z + matrix[12],
+        matrix[1] * p.x + matrix[5] * p.y + matrix[9] * p.z + matrix[13],
+        matrix[2] * p.x + matrix[6] * p.y + matrix[10] * p.z + matrix[14]
+        );
     return transformed;
 }
 
