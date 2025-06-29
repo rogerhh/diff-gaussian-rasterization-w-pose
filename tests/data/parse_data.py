@@ -32,7 +32,9 @@ for key, value in data.items():
     print("Saving", key)
     if key == "sh":
         value = value.squeeze()
-    if isinstance(value, float):
+    if isinstance(value, int):
+        np.savetxt(f"{key}.csv", [value], delimiter=" ", fmt='%d')
+    elif isinstance(value, float):
         np.savetxt(f"{key}.csv", [value], delimiter=" ", fmt='%.8f')
     elif isinstance(value, torch.Tensor):
         np.savetxt(f"{key}.csv", value.detach().cpu().numpy(), delimiter=" ", fmt='%.8f')

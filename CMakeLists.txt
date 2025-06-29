@@ -52,10 +52,13 @@ target_include_directories(CudaRasterizer PRIVATE third_party/glm third_party/au
 
 add_executable(basic_tests
     tests/main.cu
-    tests/test_utils.cu
     tests/transform4x4_test.cu
     tests/in_frustum_test.cu
     tests/vec4_tests.cu
+    tests/floatgrad_tests.cu
+    tests/compute_cov3D_tests.cu
+    tests/compute_color_tests.cu
+    tests/preprocess_jvp_test.cu
 )
 
 target_include_directories(basic_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cuda_rasterizer ${CMAKE_CURRENT_SOURCE_DIR}/tests third_party/glm third_party/auto-jvp-example)

@@ -1,3 +1,6 @@
+#ifndef TEST_UTILS_IMPL_H
+#define TEST_UTILS_IMPL_H
+
 #include "test_utils.h"
 
 #include <fstream>
@@ -40,3 +43,19 @@ void read_csv(const std::string& filepath,
         rows++;
     }
 }
+
+template <typename T>
+T read_scalar(const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open file: " + filepath);
+    }
+    T value;
+    file >> value;
+    if (file.fail()) {
+        throw std::runtime_error("Failed to read scalar value from file: " + filepath);
+    }
+    return value;
+}
+
+#endif // TEST_UTILS_IMPL_H

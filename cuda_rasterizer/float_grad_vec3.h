@@ -1,5 +1,5 @@
-#ifndef FLOAT_GRAD_VEC4_H
-#define FLOAT_GRAD_VEC4_H
+#ifndef FLOAT_GRAD_VEC3_H
+#define FLOAT_GRAD_VEC3_H
 
 #define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
@@ -7,35 +7,34 @@
 // Specialization for get_grad
 template <>
 inline __host__ __device__
-decltype(auto) get_grad<glm::vec4>(const glm::vec4& v) {
-    return glm::vec4{0.0f, 0.0f, 0.0f, 0.0f};
+decltype(auto) get_grad<glm::vec3>(const glm::vec3& v) {
+    return glm::vec3{0.0f, 0.0f, 0.0f};
 }
 template <>
 inline __host__ __device__
-decltype(auto) get_grad<const glm::vec4>(const glm::vec4& v) {
-    return glm::vec4{0.0f, 0.0f, 0.0f, 0.0f};
+decltype(auto) get_grad<const glm::vec3>(const glm::vec3& v) {
+    return glm::vec3{0.0f, 0.0f, 0.0f};
 }
 
 template <typename T>
-using is_vec4_type = std::is_same<std::decay_t<decltype(get_data(std::declval<T>()))>, glm::vec4>;
+using is_vec3_type = std::is_same<std::decay_t<decltype(get_data(std::declval<T>()))>, glm::vec3>;
 
 template <>
-struct FloatGradRef<glm::vec4> : FloatGradRefBase<glm::vec4> {
+struct FloatGradRef<glm::vec3> : FloatGradRefBase<glm::vec3> {
     // All constructors
     template <typename... Args>
     __host__ __device__
     FloatGradRef(Args&&... args)
-    : FloatGradRefBase<glm::vec4>(std::forward<Args>(args)...),
+    : FloatGradRefBase<glm::vec3>(std::forward<Args>(args)...),
       x(&data().x, &grad().x), 
       y(&data().y, &grad().y),
-      z(&data().z, &grad().z),
-      w(&data().w, &grad().w) {}
+      z(&data().z, &grad().z) {}
 
     // All assignment operators
     template <typename OtherType>
     __host__ __device__
     FloatGradRef& operator=(const OtherType& other) {
-        FloatGradRefBase<glm::vec4>::operator=(other);
+        FloatGradRefBase<glm::vec3>::operator=(other);
         return *this;
     }
 
@@ -52,26 +51,24 @@ struct FloatGradRef<glm::vec4> : FloatGradRefBase<glm::vec4> {
     FloatGradRef<float> x;
     FloatGradRef<float> y;
     FloatGradRef<float> z;
-    FloatGradRef<float> w;
 };
 
 template <>
-struct FloatGrad<glm::vec4> : FloatGradBase<glm::vec4> {
+struct FloatGrad<glm::vec3> : FloatGradBase<glm::vec3> {
     // All constructors
     template <typename... Args>
     __host__ __device__
     FloatGrad(Args&&... args)
-    : FloatGradBase<glm::vec4>(std::forward<Args>(args)...),
+    : FloatGradBase<glm::vec3>(std::forward<Args>(args)...),
       x(&data().x, &grad().x), 
       y(&data().y, &grad().y),
-      z(&data().z, &grad().z),
-      w(&data().w, &grad().w) {}
+      z(&data().z, &grad().z) {}
 
     // All assignment operators
     template <typename OtherType>
     __host__ __device__
     FloatGrad& operator=(const OtherType& other) {
-        FloatGradBase<glm::vec4>::operator=(other);
+        FloatGradBase<glm::vec3>::operator=(other);
         return *this;
     }
 
@@ -88,19 +85,17 @@ struct FloatGrad<glm::vec4> : FloatGradBase<glm::vec4> {
     FloatGradRef<float> x;
     FloatGradRef<float> y;
     FloatGradRef<float> z;
-    FloatGradRef<float> w;
 };
 
 template <>
-struct FloatGradRef<const glm::vec4> : FloatGradRefBase<const glm::vec4> {
+struct FloatGradRef<const glm::vec3> : FloatGradRefBase<const glm::vec3> {
     template <typename... Args>
     __host__ __device__
     FloatGradRef(Args&&... args)
-    : FloatGradRefBase<const glm::vec4>(std::forward<Args>(args)...),
+    : FloatGradRefBase<const glm::vec3>(std::forward<Args>(args)...),
       x(&data().x, &grad().x), 
       y(&data().y, &grad().y),
-      z(&data().z, &grad().z),
-      w(&data().w, &grad().w) {}
+      z(&data().z, &grad().z) {}
 
     __host__ __device__
     FloatGradRef<const float> operator[](int index) const {
@@ -110,19 +105,17 @@ struct FloatGradRef<const glm::vec4> : FloatGradRefBase<const glm::vec4> {
     FloatGradRef<const float> x;
     FloatGradRef<const float> y;
     FloatGradRef<const float> z;
-    FloatGradRef<const float> w;
 };
 
 template <>
-struct FloatGrad<const glm::vec4> : FloatGradBase<const glm::vec4> {
+struct FloatGrad<const glm::vec3> : FloatGradBase<const glm::vec3> {
     template <typename... Args>
     __host__ __device__
     FloatGrad(Args&&... args)
-    : FloatGradBase<const glm::vec4>(std::forward<Args>(args)...),
+    : FloatGradBase<const glm::vec3>(std::forward<Args>(args)...),
       x(&data().x, &grad().x), 
       y(&data().y, &grad().y),
-      z(&data().z, &grad().z),
-      w(&data().w, &grad().w) {}
+      z(&data().z, &grad().z) {}
 
     __host__ __device__
     FloatGradRef<const float> operator[](int index) const {
@@ -132,7 +125,6 @@ struct FloatGrad<const glm::vec4> : FloatGradBase<const glm::vec4> {
     FloatGradRef<const float> x;
     FloatGradRef<const float> y;
     FloatGradRef<const float> z;
-    FloatGradRef<const float> w;
 };
 
-#endif // FLOAT_GRAD_VEC4_H
+#endif // FLOAT_GRAD_VEC3_H

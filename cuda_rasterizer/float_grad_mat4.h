@@ -4,6 +4,24 @@
 #define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
 
+// Specialization for get_grad
+template <>
+inline __host__ __device__
+decltype(auto) get_grad<glm::mat4>(const glm::mat4& v) {
+    return glm::mat4{0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f};
+}
+template <>
+inline __host__ __device__
+decltype(auto) get_grad<const glm::mat4>(const glm::mat4& v) {
+    return glm::mat4{0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f};
+}
+
 template <typename T>
 using is_mat4_type = std::is_same<std::decay_t<decltype(get_data(std::declval<T>()))>, glm::mat4>;
 

@@ -93,21 +93,21 @@ void call_in_frustum_floatgrad(int orig_points_rows,
 TEST(ForwardTest, InFrustumTest) {
     std::vector<float> orig_points_host_scalar;
     int orig_points_rows, orig_points_cols;
-    read_csv("data/means3D.csv", orig_points_host_scalar, orig_points_rows, orig_points_cols);
+    read_csv<float>("data/means3D.csv", orig_points_host_scalar, orig_points_rows, orig_points_cols);
     EXPECT_EQ(orig_points_cols, 3);
     float3* orig_points_host = reinterpret_cast<float3*>(orig_points_host_scalar.data());
 
     std::vector<float> viewmatrix_host;
     int viewmatrix_rows, viewmatrix_cols;
-    read_csv("data/viewmatrix.csv", viewmatrix_host, viewmatrix_rows, viewmatrix_cols);
+    read_csv<float>("data/viewmatrix.csv", viewmatrix_host, viewmatrix_rows, viewmatrix_cols);
 
     std::vector<float> projmatrix_host;
     int projmatrix_rows, projmatrix_cols;
-    read_csv("data/projmatrix.csv", projmatrix_host, projmatrix_rows, projmatrix_cols);
+    read_csv<float>("data/projmatrix.csv", projmatrix_host, projmatrix_rows, projmatrix_cols);
 
     std::vector<float> prefiltered_host;
     int prefiltered_rows, prefiltered_cols;
-    read_csv("data/prefiltered.csv", prefiltered_host, prefiltered_rows, prefiltered_cols);
+    read_csv<float>("data/prefiltered.csv", prefiltered_host, prefiltered_rows, prefiltered_cols);
     bool prefiltered = prefiltered_host[0] != 0.0f;
 
     // Set up gradients

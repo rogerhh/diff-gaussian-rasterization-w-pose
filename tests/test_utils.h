@@ -1,3 +1,6 @@
+#ifndef TEST_UTILS_H
+#define TEST_UTILS_H
+
 #include "float_grad.h"
 
 #include <string>
@@ -82,6 +85,10 @@ inline void align_params(std::pair<float*, int>* args,
 
 template <typename T>
 T* host_to_device(const T* ptr_host, size_t len) {
+    if (ptr_host == nullptr || len == 0) {
+        return nullptr;
+    }
+
     T* ptr_device = nullptr;
     cudaError_t err;
 
@@ -101,6 +108,16 @@ T* host_to_device(const T* ptr_host, size_t len) {
     return ptr_device;
 }
 
+template <typename T>
+void device_to_host(T* ptr_host,
+                           const T* ptr_device, 
+                           size_t len) {
+    cudaError_t err = cudaMemcpy(ptr_host, ptr_device, len * sizeof(T), cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+        throw std::runtime_error("cudaMemcpy failed: " + std::string(cudaGetErrorString(err)));
+    }
+}
+
 inline void free_device(void* ptr_device) {
     if (ptr_device != nullptr) {
         cudaError_t err = cudaFree(ptr_device);
@@ -111,7 +128,15 @@ inline void free_device(void* ptr_device) {
 }
 
 // Read a csv to load a 2D array but store it as a contiguous vector of floats.
+template <typename T>
 void read_csv(const std::string& filepath, 
-              std::vector<float>& data,
+              std::vector<T>& data,
               int& rows,
               int& cols);
+
+template <typename T>
+T read_scalar(const std::string& filepath);
+
+#include "test_utils_impl.h"
+
+#endif // TEST_UTILS_H

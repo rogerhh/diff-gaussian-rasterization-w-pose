@@ -28,8 +28,9 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
     glm::vec3 dir = pos - campos;
     dir = dir / glm::length(dir);
 
-    glm::vec3* sh = ((glm::vec3*)shs) + idx * max_coeffs;
-    glm::vec3 result = SH_C0 * sh[0];
+    // TODO: Make a merge request for this bug
+    const float* sh = shs + idx * max_coeffs;
+    glm::vec3 result = SH_C0 * glm::vec3(sh[0], sh[1], sh[2]);
 
     if (deg > 0)
     {

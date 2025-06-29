@@ -72,7 +72,7 @@ void call_transform_floatgrad(const float3* p_data,
     transformed = transformPoint4x4(p, matrix);
 }
 
-TEST(ForwardTest, TranformPoint4x4) {
+TEST(ForwardTest, TransformPoint4x4) {
     float3 p_host = {1.0f, 2.0f, 3.0f};
     float3 p_grad_host = {0.1f, 0.2f, 0.3f};
     float* matrix_host = new float[16];
