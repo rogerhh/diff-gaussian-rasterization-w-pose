@@ -92,6 +92,24 @@ namespace FORWARD
         float* out_depth,
         float* out_opacity,
         int* n_touched);
+
+    template <typename... JvpArgs>
+    void renderJvp(JvpArgs&&... jvp_args);
+        // const dim3 grid, dim3 block,
+        // const uint2* ranges,
+        // const uint32_t* point_list,
+        // int W, int H,
+        // const float2* points_xy_image,
+        // const float* features,
+        // const float4* conic_opacity,
+        // float* final_T,
+        // uint32_t* n_contrib,
+        // const float* bg_color,
+        // float* out_color,
+        // const float* depth,
+        // float* out_depth,
+        // float* out_opacity,
+        // int* n_touched
 }
 
 #include "forward_impl.h"

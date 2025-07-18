@@ -16,22 +16,22 @@
 #define BLOCK_X 16
 #define BLOCK_Y 16
 
-__global__
-void update_arg(float* arg, float eps, float* arg_old, int mode) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx == 0) {
-        if (mode == 0) {
-            *arg_old = *arg;
-            *arg += eps;
-        }
-        else if (mode == 1) {
-            *arg = *arg_old - eps;
-        }
-        else if (mode == 2) {
-            *arg = *arg_old;
-        }
-    }
-}
+// __global__
+// void update_arg(float* arg, float eps, float* arg_old, int mode) {
+//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (idx == 0) {
+//         if (mode == 0) {
+//             *arg_old = *arg;
+//             *arg += eps;
+//         }
+//         else if (mode == 1) {
+//             *arg = *arg_old - eps;
+//         }
+//         else if (mode == 2) {
+//             *arg = *arg_old;
+//         }
+//     }
+// }
 
 __global__
 void compute_jvp(int P, 

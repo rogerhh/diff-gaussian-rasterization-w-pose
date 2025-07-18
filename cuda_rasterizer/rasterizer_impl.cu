@@ -99,6 +99,7 @@ __global__ void duplicateWithKeys(
 		{
 			for (int x = rect_min.x; x < rect_max.x; x++)
 			{
+
 				uint64_t key = y * grid.x + x;
 				key <<= 32;
 				key |= *((uint32_t*)&depths[idx]);
@@ -169,10 +170,42 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& ch
 	return geom;
 }
 
+CudaRasterizer::GeometryStateJvp CudaRasterizer::GeometryStateJvp::fromChunk(char*& chunk, size_t P)
+{
+	GeometryStateJvp geom;
+	obtain(chunk, geom.depths.data_arr_, P, 128);
+	obtain(chunk, geom.depths.grad_arr_, P, 128);
+	obtain(chunk, geom.clamped, P * 3, 128);
+	obtain(chunk, geom.internal_radii, P, 128);
+	obtain(chunk, geom.means2D.data_arr_, P, 128);
+	obtain(chunk, geom.means2D.grad_arr_, P, 128);
+	obtain(chunk, geom.cov3D.data_arr_, P * 6, 128);
+	obtain(chunk, geom.cov3D.grad_arr_, P * 6, 128);
+	obtain(chunk, geom.conic_opacity.data_arr_, P, 128);
+	obtain(chunk, geom.conic_opacity.grad_arr_, P, 128);
+	obtain(chunk, geom.rgb.data_arr_, P * 3, 128);
+	obtain(chunk, geom.rgb.grad_arr_, P * 3, 128);
+	obtain(chunk, geom.tiles_touched, P, 128);
+	cub::DeviceScan::InclusiveSum(nullptr, geom.scan_size, geom.tiles_touched, geom.tiles_touched, P);
+	obtain(chunk, geom.scanning_space, geom.scan_size, 128);
+	obtain(chunk, geom.point_offsets, P, 128);
+	return geom;
+}
+
 CudaRasterizer::ImageState CudaRasterizer::ImageState::fromChunk(char*& chunk, size_t N)
 {
 	ImageState img;
 	obtain(chunk, img.accum_alpha, N, 128);
+	obtain(chunk, img.n_contrib, N, 128);
+	obtain(chunk, img.ranges, N, 128);
+	return img;
+}
+
+CudaRasterizer::ImageStateJvp CudaRasterizer::ImageStateJvp::fromChunk(char*& chunk, size_t N)
+{
+	ImageStateJvp img;
+	obtain(chunk, img.accum_alpha.data_arr_, N, 128);
+	obtain(chunk, img.accum_alpha.grad_arr_, N, 128);
 	obtain(chunk, img.n_contrib, N, 128);
 	obtain(chunk, img.ranges, N, 128);
 	return img;
